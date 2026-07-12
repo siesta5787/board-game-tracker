@@ -23,7 +23,7 @@ ssh username@boardgames.local
 Then run the installer:
 
 ```
-curl -sSL https://raw.githubusercontent.com/REPO_OWNER/REPO_NAME/main/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/main/deploy/install.sh | sudo bash
 ```
 
 This downloads the right binary for your Pi automatically, sets it up as a background service that starts on boot, and prints an admin username/password at the end — **save that password**, you'll need it to log in the first time (and you'll be asked to change it and set up two-factor login immediately after).
@@ -51,7 +51,7 @@ The app is now running, but only reachable from the Pi itself (`127.0.0.1:3000`)
 Whenever a new version is released, SSH into the Pi and run:
 
 ```
-curl -sSL https://raw.githubusercontent.com/REPO_OWNER/REPO_NAME/main/deploy/update.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/main/deploy/update.sh | sudo bash
 ```
 
 This replaces the app with the latest version and restarts it. Your database, collection, plays, and photos are never touched.

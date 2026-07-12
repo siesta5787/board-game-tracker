@@ -4,11 +4,11 @@
 # photos). Database migrations run automatically on the next startup.
 #
 # Usage (as root, e.g. via sudo):
-#   curl -sSL https://raw.githubusercontent.com/REPO_OWNER/REPO_NAME/main/deploy/update.sh | sudo bash
+#   curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/main/deploy/update.sh | sudo bash
 
 set -euo pipefail
 
-REPO="REPO_OWNER/REPO_NAME"
+REPO="siesta5787/board-game-tracker"
 INSTALL_DIR="/opt/board-game-tracker"
 SERVICE_USER="boardgame"
 

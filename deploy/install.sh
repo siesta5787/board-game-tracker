@@ -2,14 +2,14 @@
 # Board Game Tracker — installer for Raspberry Pi (or any Linux/systemd box).
 #
 # Usage (as root, e.g. via sudo):
-#   curl -sSL https://raw.githubusercontent.com/REPO_OWNER/REPO_NAME/main/deploy/install.sh | sudo bash
+#   curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/main/deploy/install.sh | sudo bash
 #
 # Safe to re-run: it won't overwrite an existing .env or database, it just
 # re-installs the binary/service (useful for re-running after a failure).
 
 set -euo pipefail
 
-REPO="REPO_OWNER/REPO_NAME"
+REPO="siesta5787/board-game-tracker"
 INSTALL_DIR="/opt/board-game-tracker"
 SERVICE_USER="boardgame"
 
