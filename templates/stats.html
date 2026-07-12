@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Stats</h1>
+        <p><a href="/stats/head-to-head">Compare two players &rarr;</a></p>
+        <p class="hint">These numbers only include plays visible to you.</p>
+
+        <div class="stat-tiles">
+            <div class="stat-tile">
+                <div class="stat-label">Plays logged</div>
+                <div class="stat-value">{{ total_plays }}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="stat-label">Games played</div>
+                <div class="stat-value">{{ distinct_games }}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="stat-label">Your win rate</div>
+                <div class="stat-value">{{ win_rate_pct }}%</div>
+            </div>
+        </div>
+
+        <h2>Your top games</h2>
+        {% if top_games.is_empty() %}
+        <p class="hint">No plays logged yet.</p>
+        {% else %}
+        <table>
+            <thead><tr><th>Game</th><th>Plays</th></tr></thead>
+            <tbody>
+            {% for g in top_games %}
+                <tr><td>{{ g.name }}</td><td>{{ g.play_count }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        <h2>Win rate leaderboard</h2>
+        {% if leaderboard.is_empty() %}
+        <p class="hint">No plays logged yet.</p>
+        {% else %}
+        <table>
+            <thead><tr><th>Player</th><th>Plays</th><th>Wins</th><th>Win rate</th></tr></thead>
+            <tbody>
+            {% for l in leaderboard %}
+                <tr>
+                    <td>{{ l.player_name }}</td>
+                    <td>{{ l.play_count }}</td>
+                    <td>{{ l.win_count }}</td>
+                    <td>
+                        <div class="meter-row">
+                            <div class="meter-track">
+                                <div class="meter-fill" style="width: {{ l.win_rate_pct }}%;"></div>
+                            </div>
+                            <span class="meter-value">{{ l.win_rate_pct }}%</span>
+                        </div>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        <h2>Your average score by player count</h2>
+        {% if score_by_count.is_empty() %}
+        <p class="hint">No scored plays yet.</p>
+        {% else %}
+        <table>
+            <thead><tr><th>Players</th><th>Average score</th><th>Plays</th></tr></thead>
+            <tbody>
+            {% for s in score_by_count %}
+                <tr>
+                    <td>{{ s.player_count }}</td>
+                    <td>{{ s.avg_score }}</td>
+                    <td>{{ s.play_count }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        <h2>Plays &amp; wins by month</h2>
+        {% if months.is_empty() %}
+        <p class="hint">No plays logged yet.</p>
+        {% else %}
+        <div class="month-chart">
+        {% for m in months %}
+            <div class="month-row">
+                <span class="month-label">{{ m.label }}</span>
+                <div class="month-bar-track">
+                    <div class="month-bar" style="width: {{ m.bar_pct }}%;"></div>
+                </div>
+                <span class="month-count">{{ m.play_count }} played, {{ m.win_count }} won</span>
+            </div>
+        {% endfor %}
+        </div>
+        {% endif %}
+    </main>
+</body>
+</html>

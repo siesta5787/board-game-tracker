@@ -1,0 +1,24 @@
+[Unit]
+Description=Board Game Tracker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=boardgame
+Group=boardgame
+WorkingDirectory=/opt/board-game-tracker
+EnvironmentFile=/opt/board-game-tracker/.env
+ExecStart=/opt/board-game-tracker/board_game_tracker
+Restart=on-failure
+RestartSec=5
+
+# Sandboxing: the service can only write to its own data directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/board-game-tracker/data
+
+[Install]
+WantedBy=multi-user.target

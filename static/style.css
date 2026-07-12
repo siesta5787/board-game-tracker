@@ -1,0 +1,471 @@
+:root {
+    --color-bg: #f4f5f7;
+    --color-surface: #ffffff;
+    --color-text: #1f2430;
+    --color-text-muted: #6b7280;
+    --color-primary: #4f46e5;
+    --color-primary-hover: #4338ca;
+    --color-primary-track: #e5e3fb;
+    --color-border: #e2e4e9;
+    --color-danger: #dc2626;
+    --color-danger-bg: #fef2f2;
+    --color-success: #16a34a;
+    --color-success-bg: #f0fdf4;
+    --radius: 10px;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --color-bg: #14161c;
+        --color-surface: #1c1f28;
+        --color-text: #e9eaef;
+        --color-text-muted: #9aa0ac;
+        --color-primary: #6366f1;
+        --color-primary-hover: #7880f5;
+        --color-primary-track: #2a2a4a;
+        --color-border: #2c3040;
+        --color-danger: #f87171;
+        --color-danger-bg: #2a1414;
+        --color-success: #4ade80;
+        --color-success-bg: #10241a;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text);
+    line-height: 1.5;
+}
+
+a {
+    color: var(--color-primary);
+}
+
+/* Centered card layout, used for login / password change / 2FA setup */
+.auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 32px;
+    width: 100%;
+    max-width: 400px;
+}
+
+.card h1 {
+    margin-top: 0;
+    font-size: 1.5rem;
+}
+
+.card p.subtitle {
+    color: var(--color-text-muted);
+    margin-top: -8px;
+    margin-bottom: 24px;
+    font-size: 0.95rem;
+}
+
+label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+}
+
+input[type="text"],
+input[type="password"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-size: 1rem;
+    margin-bottom: 16px;
+}
+
+input:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
+button, .button {
+    display: inline-block;
+    background: var(--color-primary);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+}
+
+button:hover, .button:hover {
+    background: var(--color-primary-hover);
+}
+
+button.secondary, .button.secondary {
+    background: transparent;
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+}
+
+.error {
+    background: var(--color-danger-bg);
+    color: var(--color-danger);
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+}
+
+.success {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+}
+
+.hint {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    margin-top: -10px;
+    margin-bottom: 16px;
+}
+
+.qr-code {
+    display: flex;
+    justify-content: center;
+    margin: 16px 0;
+}
+
+.qr-code img {
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+}
+
+.secret-key {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    word-break: break-all;
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+}
+
+/* App shell layout, used once logged in */
+.app-header {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    padding: 14px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+}
+
+.app-header .brand {
+    font-weight: 700;
+    font-size: 1.1rem;
+    text-decoration: none;
+    color: var(--color-text);
+}
+
+.app-header nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    align-items: center;
+    font-size: 0.9rem;
+}
+
+.app-content {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px 20px;
+}
+
+/* Tables can't shrink below their content width, so let them scroll
+   sideways on narrow screens instead of forcing the whole page wider. */
+@media (max-width: 600px) {
+    table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    .app-content {
+        padding: 16px 14px;
+    }
+
+    .app-header {
+        padding: 10px 14px;
+    }
+
+    .app-header nav {
+        font-size: 0.82rem;
+        gap: 6px 10px;
+    }
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+}
+
+th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.95rem;
+}
+
+th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge.admin {
+    background: var(--color-success-bg);
+    color: var(--color-success);
+}
+
+.badge.inactive {
+    background: var(--color-danger-bg);
+    color: var(--color-danger);
+}
+
+.muted {
+    color: var(--color-text-muted);
+    font-weight: normal;
+    font-size: 0.85em;
+}
+
+.game-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.game-card {
+    display: flex;
+    gap: 16px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 16px;
+}
+
+a.play-card {
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s ease;
+}
+
+a.play-card:hover {
+    border-color: var(--color-primary);
+}
+
+.game-thumb {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 8px;
+    flex-shrink: 0;
+    background: var(--color-bg);
+}
+
+.game-thumb-placeholder {
+    border: 1px dashed var(--color-border);
+}
+
+.game-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.game-info h3 {
+    margin: 0 0 4px 0;
+}
+
+.status-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.pill-form {
+    margin: 0;
+    display: inline;
+}
+
+.pill {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+}
+
+.pill-active {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+.month-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.month-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.month-label {
+    width: 80px;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+
+.month-bar-track {
+    flex: 1;
+    background: var(--color-primary-track);
+    border-radius: 6px;
+    overflow: hidden;
+    height: 18px;
+}
+
+.month-bar {
+    background: var(--color-primary);
+    height: 100%;
+    border-radius: 6px;
+}
+
+.month-count {
+    width: 170px;
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    text-align: right;
+}
+
+/* Stat tiles — headline numbers at the top of a dashboard. */
+.stat-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin: 20px 0;
+}
+
+.stat-tile {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 16px;
+}
+
+.stat-tile .stat-label {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    font-weight: 600;
+}
+
+.stat-tile .stat-value {
+    font-size: 1.8rem;
+    font-weight: 600;
+    font-variant-numeric: proportional-nums;
+    margin-top: 4px;
+}
+
+/* Meter — a value on a 0-100 scale (e.g. win rate) shown as a filled track
+   next to its number, so relative standing reads at a glance. */
+.meter-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.meter-track {
+    flex: 1;
+    background: var(--color-primary-track);
+    border-radius: 999px;
+    overflow: hidden;
+    height: 8px;
+    min-width: 60px;
+}
+
+.meter-fill {
+    background: var(--color-primary);
+    height: 100%;
+    border-radius: 999px;
+}
+
+.meter-value {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+    width: 3.2em;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.photo-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.photo-thumb {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+}

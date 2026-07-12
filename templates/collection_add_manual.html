@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Add a game manually</h1>
+        <p class="hint">Use this if the game isn't on BoardGameGeek, or BGG is unreachable.</p>
+
+        {% if let Some(e) = error %}
+        <div class="error">{{ e }}</div>
+        {% endif %}
+
+        <form method="post" action="/collection/add/manual" style="max-width:400px;">
+            <label for="name">Game name</label>
+            <input type="text" id="name" name="name" required autofocus>
+
+            <label for="min_players">Min players</label>
+            <input type="text" id="min_players" name="min_players" inputmode="numeric" pattern="[0-9]*">
+
+            <label for="max_players">Max players</label>
+            <input type="text" id="max_players" name="max_players" inputmode="numeric" pattern="[0-9]*">
+
+            <label for="status">Add as</label>
+            <select id="status" name="status">
+            {% for s in statuses %}
+                <option value="{{ s.0 }}">{{ s.1 }}</option>
+            {% endfor %}
+            </select>
+            <br><br>
+
+            <button type="submit">Add game</button>
+        </form>
+    </main>
+</body>
+</html>

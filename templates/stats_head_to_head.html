@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Head-to-head</h1>
+
+        <form method="get" action="/stats/head-to-head" style="display:flex;gap:12px;align-items:end;max-width:500px;">
+            <div style="flex:1;">
+                <label for="player_a">Player A</label>
+                <select id="player_a" name="player_a">
+                    <option value="">Choose&hellip;</option>
+                    {% for p in players %}
+                    <option value="{{ p.id }}" {% if let Some(a) = player_a %}{% if *a == p.id %}selected{% endif %}{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="flex:1;">
+                <label for="player_b">Player B</label>
+                <select id="player_b" name="player_b">
+                    <option value="">Choose&hellip;</option>
+                    {% for p in players %}
+                    <option value="{{ p.id }}" {% if let Some(b) = player_b %}{% if *b == p.id %}selected{% endif %}{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" style="margin-bottom:16px;">Compare</button>
+        </form>
+
+        {% if !matchups.is_empty() %}
+        <h2>{{ name_a }} vs {{ name_b }}</h2>
+        <p>{{ name_a }}: {{ wins_a }} wins &middot; {{ name_b }}: {{ wins_b }} wins &middot; Ties: {{ ties }} &middot; Total plays together: {{ matchups.len() }}</p>
+
+        <table>
+            <thead>
+                <tr><th>Date</th><th>Game</th><th>{{ name_a }}</th><th>{{ name_b }}</th></tr>
+            </thead>
+            <tbody>
+            {% for m in matchups %}
+                <tr>
+                    <td>{{ m.play_date }}</td>
+                    <td>{{ m.game_name }}</td>
+                    <td>{% if let Some(s) = m.score_a %}{{ s }}{% endif %} {% if m.winner_a %}<span class="badge admin">W</span>{% endif %}</td>
+                    <td>{% if let Some(s) = m.score_b %}{{ s }}{% endif %} {% if m.winner_b %}<span class="badge admin">W</span>{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+            {% if let Some(_a) = player_a %}
+                {% if let Some(_b) = player_b %}
+                <p class="hint">No shared plays visible to you between these two players.</p>
+                {% endif %}
+            {% endif %}
+        {% endif %}
+    </main>
+</body>
+</html>

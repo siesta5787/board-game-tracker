@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Welcome, {{ username }}.</h1>
+        <p>This is a placeholder home page. Collection, plays, and stats will live here.</p>
+        <p><a href="/import/bgcatalog">Import your plays from BG Catalog &rarr;</a></p>
+        <p><a href="/export">Download your data (collection, plays, photos) &rarr;</a></p>
+    </main>
+</body>
+</html>

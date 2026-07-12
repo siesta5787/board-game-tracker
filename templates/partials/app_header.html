@@ -1,0 +1,16 @@
+<header class="app-header">
+    <a href="/" class="brand">Board Game Tracker</a>
+    <nav>
+        <a href="/collection">My collection</a>
+        <a href="/plays">Plays</a>
+        <a href="/stats">Stats</a>
+        <a href="/notifications">Notifications</a>
+        <span>{{ username }}</span>
+        {% if is_admin %}
+        <a href="/admin/users">Admin</a>
+        {% endif %}
+        <form method="post" action="/logout" style="margin:0;display:inline;">
+            <button type="submit" class="secondary">Log out</button>
+        </form>
+    </nav>
+</header>

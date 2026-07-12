@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Log a play</h1>
+
+        {% if let Some(e) = error %}
+        <div class="error">{{ e }}</div>
+        {% endif %}
+
+        <form method="post" action="/plays" style="max-width:600px;">
+            <label for="game_id">Game</label>
+            <select id="game_id" name="game_id" required>
+                <option value="">Choose a game&hellip;</option>
+                {% for g in games %}
+                <option value="{{ g.0 }}">{{ g.1 }}</option>
+                {% endfor %}
+            </select>
+            {% if games.is_empty() %}
+            <p class="hint">No games in the system yet. <a href="/collection/add/manual">Add one first</a>.</p>
+            {% endif %}
+
+            <label for="play_date">Date</label>
+            <input type="date" id="play_date" name="play_date" value="{{ today }}" required>
+
+            <label for="location">Location</label>
+            <input type="text" id="location" name="location" placeholder="e.g. Mike's house">
+
+            <label for="duration_minutes">Duration (minutes)</label>
+            <input type="text" id="duration_minutes" name="duration_minutes" inputmode="numeric" pattern="[0-9]*">
+
+            <label for="visibility">Who can see this play?</label>
+            <select id="visibility" name="visibility">
+                <option value="public" selected>Public &mdash; visible to everyone</option>
+                <option value="linked_only">Linked only &mdash; visible to tagged players</option>
+                <option value="private">Private &mdash; visible only to you</option>
+            </select>
+
+            <label for="notes">Notes</label>
+            <textarea id="notes" name="notes" rows="3" style="width:100%;padding:10px 12px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-bg);color:var(--color-text);font-family:inherit;font-size:1rem;margin-bottom:16px;"></textarea>
+
+            <h3>Players</h3>
+            <table>
+                <thead>
+                    <tr><th>Include</th><th>Player</th><th>Score</th><th>Winner</th></tr>
+                </thead>
+                <tbody>
+                {% for u in active_users %}
+                    <tr>
+                        <td><input type="checkbox" name="include_user_{{ u.0 }}" value="1" style="width:auto;"></td>
+                        <td>{{ u.1 }}</td>
+                        <td><input type="text" name="score_user_{{ u.0 }}" inputmode="decimal" style="margin-bottom:0;width:90px;"></td>
+                        <td><input type="checkbox" name="winner_user_{{ u.0 }}" value="1" style="width:auto;"></td>
+                    </tr>
+                {% endfor %}
+                {% for i in guest_slots %}
+                    <tr>
+                        <td></td>
+                        <td><input type="text" name="guest_name_{{ i }}" placeholder="Guest name" style="margin-bottom:0;"></td>
+                        <td><input type="text" name="guest_score_{{ i }}" inputmode="decimal" style="margin-bottom:0;width:90px;"></td>
+                        <td><input type="checkbox" name="guest_winner_{{ i }}" value="1" style="width:auto;"></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <br>
+
+            <button type="submit">Save play</button>
+        </form>
+    </main>
+</body>
+</html>

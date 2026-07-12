@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>{{ play.game_name }}</h1>
+        <p class="muted">
+            {{ play.play_date }}
+            {% if let Some(loc) = play.location_name %} &middot; {{ loc }}{% endif %}
+            {% if let Some(d) = play.duration_minutes %} &middot; {{ d }} min{% endif %}
+            &middot; logged by {{ play.logged_by_username }}
+            &middot; <span class="badge">{{ play.visibility }}</span>
+        </p>
+
+        {% if let Some(n) = play.notes %}
+        <p>{{ n }}</p>
+        {% endif %}
+
+        {% if can_edit %}
+        <p><a href="/plays/{{ play.id }}/edit" class="button secondary">Edit play</a></p>
+        {% endif %}
+
+        {% if !photos.is_empty() %}
+        <div class="photo-grid">
+        {% for photo in photos %}
+            <a href="{{ photo.url }}" target="_blank" rel="noopener"><img src="{{ photo.url }}" alt="Play photo" class="photo-thumb"></a>
+        {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if can_edit %}
+            {% if photos.len() < 5 %}
+            <form method="post" action="/plays/{{ play.id }}/photos" enctype="multipart/form-data" style="margin:12px 0;display:flex;gap:8px;align-items:center;">
+                <input type="file" name="photo" accept="image/*" multiple style="width:auto;margin-bottom:0;">
+                <button type="submit">Add photo</button>
+            </form>
+            {% endif %}
+        {% endif %}
+
+        <table>
+            <thead>
+                <tr><th>Player</th><th>Score</th><th>Result</th></tr>
+            </thead>
+            <tbody>
+            {% for p in players %}
+                <tr>
+                    <td>
+                        {{ p.player_name }}
+                        {% if p.player_user_id.is_some() %}
+                            {% if p.link_status == "pending" %}<span class="badge">awaiting approval</span>{% endif %}
+                            {% if p.link_status == "declined" %}<span class="badge inactive">declined</span>{% endif %}
+                        {% endif %}
+                    </td>
+                    <td>{% if let Some(s) = p.score %}{{ s }}{% endif %}</td>
+                    <td>{% if p.is_winner %}<span class="badge admin">Winner</span>{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </main>
+</body>
+</html>

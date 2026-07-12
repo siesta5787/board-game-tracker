@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Users</h1>
+
+        {% if let Some(s) = success %}
+        <div class="success">{{ s }}</div>
+        {% endif %}
+
+        <a href="/admin/users/new" class="button">+ New user</a>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>2FA</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>{{ u.username }}</td>
+                    <td>{% if u.is_admin %}<span class="badge admin">Admin</span>{% else %}User{% endif %}</td>
+                    <td>{% if u.is_active %}Active{% else %}<span class="badge inactive">Removed</span>{% endif %}</td>
+                    <td>{% if u.totp_enabled %}Enabled{% else %}Not set up yet{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </main>
+</body>
+</html>

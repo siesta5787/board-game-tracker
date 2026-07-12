@@ -1,0 +1,26 @@
+[package]
+name = "board_game_tracker"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+argon2 = "0.5.3"
+askama = "0.16.0"
+axum = { version = "0.8.9", features = ["multipart"] }
+chrono = "0.4.45"
+dotenvy = "0.15.7"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+quick-xml = "0.41.0"
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "macros", "chrono"] }
+tokio = { version = "1.52.3", features = ["full"] }
+totp-rs = { version = "5.7.2", features = ["gen_secret", "qr"] }
+tower-http = { version = "0.7.0", features = ["fs"] }
+tower-sessions = "0.14"
+tower-sessions-sqlx-store = { version = "0.15.0", features = ["sqlite"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+urlencoding = "2.1.3"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>New user</h1>
+        <p>Set a temporary password and hand it to them directly — they'll be required to change it and set up two-factor login the first time they sign in.</p>
+
+        {% if let Some(e) = error %}
+        <div class="error">{{ e }}</div>
+        {% endif %}
+
+        <form method="post" action="/admin/users/new" style="max-width:400px;">
+            <label for="new_username">Username</label>
+            <input type="text" id="new_username" name="username" required autofocus>
+
+            <label for="temp_password">Temporary password</label>
+            <input type="password" id="temp_password" name="temp_password" minlength="15" required>
+            <p class="hint">At least 15 characters. They'll be forced to change it on first login.</p>
+
+            <label><input type="checkbox" name="is_admin" value="1" style="width:auto;display:inline-block;margin-right:6px;"> Grant admin access</label>
+            <br><br>
+
+            <button type="submit">Create user</button>
+        </form>
+    </main>
+</body>
+</html>

@@ -1,0 +1,115 @@
+# Board Game Tracker — Project Context for Claude Code
+
+## About the developer
+No prior programming experience. Originally scoped as a learning project, but the developer has since clarified they don't have time to learn the code itself — build features directly rather than teaching Rust concepts. Still wants to be looped in on real decisions (architecture, tradeoffs, schema/UX choices) and given plain-language explanations of what's being done and why.
+
+## What we're building
+A self-hosted web app for tracking a board game collection and play history, hosted on a Raspberry Pi and accessed via Tailscale Funnel (a public URL, not just a private tailnet address — so security matters more than a purely private setup). Multiple users (friends) will have accounts and can view each other's collections, plays, and profiles.
+
+## Tech stack
+- **Language:** Rust
+- **Web framework:** Axum
+- **Database:** SQLite via `sqlx`
+- **Templating/frontend:** Server-rendered HTML via `askama` (compile-time checked templates, auto-escapes for XSS safety, no runtime template files to deploy — good fit for a low-resource Pi)
+- **Sessions/auth:** `tower-sessions` with a SQLite-backed store (`tower-sessions-sqlx-store`), `argon2` for password hashing
+- **Hosting:** Raspberry Pi, exposed via Tailscale Funnel
+- **Version control:** GitHub, intended to be released as open source (license TBD — likely MIT or Apache-2.0)
+- **Dev environment:** Windows laptop for development; deploy finished builds to the Pi (compiling directly on the Pi is too slow)
+- **Cross-compile/deploy pipeline:** GitHub Actions builds the Raspberry Pi binary (target triple TBD based on Pi OS: `aarch64-unknown-linux-gnu`/`musl` for 64-bit, `armv7-unknown-linux-gnueabihf` for 32-bit — confirm which before first deploy) on push/tag, since compiling on Windows for ARM Linux needs a cross C compiler and compiling on the Pi itself is too slow
+
+## Auth & users
+- **No email/self-registration.** The admin creates each account directly (username + a temporary password chosen by the admin) and hands the credentials to the friend out-of-band. Simpler than an invite-link system since there's no email infrastructure.
+- Username/password login, **forced password change on first login** (temp password must be replaced, 15+ characters).
+- **TOTP-based 2FA is mandatory**, not optional and not deferred — every account must complete 2FA setup (scan a QR code, confirm a code) immediately after their first password change, before they can use the app at all. This supersedes the original plan to treat 2FA as a v1-out-of-scope follow-up; since the app is reachable via a public Funnel URL, it was moved into the initial build.
+- Two roles: **Admin** (the owner, can create/deactivate users) and **User** (standard).
+- No friend-request system — this is a small, self-hosted app for a hand-invited friend group. All registered users are implicitly trusted.
+- **Implemented**: bootstrap admin (created from `ADMIN_USERNAME`/`ADMIN_PASSWORD` in `.env` on first run if no users exist), login/logout, forced password change, mandatory TOTP setup with QR code, admin "create user" page, route-level enforcement (`security::require_session`, `require_full_auth`, `require_admin` middleware in `src/security.rs`).
+- **Not yet built**: password reset (no email — will likely be admin-assisted), profile page for a user to view/manage their own account.
+
+## Collection management
+- Each game entry can be tagged with a status: **Owned, Want to Buy, Wishlist, Pre-ordered, For Sale** (multiple simultaneous statuses allowed per game, e.g. Owned + For Sale)
+- Game metadata (name, image, description, player counts, weight, etc.) should be pulled from BoardGameGeek's (BGG) public API
+- **BGG's XML API now requires app registration + a Bearer token** (discovered 2026-07-11 while testing — CLAUDE.md originally assumed "no login required," which is no longer true). BGG's docs (boardgamegeek.com/using_the_xml_api, dated 2025-07-02) require registering an application at boardgamegeek.com/applications, which can take a week or more for approval, then sending `Authorization: Bearer <token>` on every XML API request. This is exactly the kind of unannounced BGG change the original brief warned about — validates treating BGG as optional. **Manual game entry is the reliable path for now**; BGG search/lookup will 400/degrade gracefully with a "couldn't reach BoardGameGeek, add manually instead" message until a token is registered and wired in.
+- **Optional BGG sync per user:** pull their existing collection and play history from BGG by username
+  - This is **pull-only** — BGG does not support reliable write-back of plays/collection via API, so there's no two-way sync
+  - Treat BGG sync as an optional, resilient add-on, not a core dependency — BGG's API/website has changed unexpectedly before and broken other apps' sync features. The core app must work fully without BGG.
+
+## Play logging
+Fields to capture per play:
+- Game
+- Date
+- Players (see linking below)
+- Location
+- Scores
+- Winner(s)
+- Duration
+
+**Player linking:**
+- Players tagged in a play can be either a registered user on the system or a named guest (not a user)
+- If a tagged player is a registered user, they receive a notification and must **approve** being linked to that play before it shows up as "their" play
+- Once approved, the play appears in both users' play histories — the other person doesn't need to separately log it
+- **Any linked/approved user can edit the play** (not just the original logger)
+
+**Per-play visibility:**
+- **Public** — visible to all users on the system
+- **Linked only** — visible only to players linked/approved on that specific play
+- **Private** — visible only to the person who logged it, even if other people are tagged in it (a tagged-but-not-logger person never sees a private play in feeds/stats, though see the detail-page exception below)
+
+**Implemented and tested end-to-end in-browser** (2026-07-12): logging a play (game/date/location/duration/notes/visibility, tagging any mix of registered users and up to 4 guests, per-player score + winner flag), the shared visibility rule (`src/plays.rs::VISIBLE_TO`, reused by both the feed and detail queries per the earlier design review), the notification + approve/decline flow, and editing (any approved linked user or the logger can change play details and existing players' scores/winner status). See `src/handlers/plays.rs`, `src/handlers/notifications.rs`.
+- One deliberate interpretation call: the single-play detail page uses a slightly wider rule (`VISIBLE_OR_TAGGED`) than the feed — a user with a *pending* tag can open the specific play to review it (so they have something to look at before approving), even on a play that wouldn't otherwise be visible to them. This doesn't affect the general feed, stats, or the private-play rule above.
+- **Player roster editing built and tested** (2026-07-12): the deferred follow-up above is done. On an existing play you can now add a player (registered user or guest — same pending/approval flow as creating a new play), remove a player, and — the main driver for this — **re-link an existing guest to a registered account in place**, preserving their score/winner rather than losing it and re-entering. Re-linking triggers the same pending+notification flow as a fresh tag (unless linking to yourself, which auto-approves). Tested end-to-end against real imported data: relinked a guest ("Kourtney") to a real account, confirmed the score survived the relink, confirmed the notification fired and approving it cleared the "awaiting approval" badge; also tested add/remove independently, confirmed a user already tagged (any status, including declined) can't be double-added (enforced by the same `UNIQUE(play_id, player_id)` constraint the schema already had), and confirmed a merely-*pending* (not yet approved) linked user still correctly gets 403 trying to edit the roster. See `available_users_for_play` and the expanded `update_play` in `src/handlers/plays.rs`.
+
+## Stats to support
+- Top/most played games
+- Win rate per player
+- Average score by player count (e.g. average score in 4-player games vs. 2-player games)
+- Head-to-head comparison between two players
+- Monthly chart of games played and games won
+
+**Implemented and tested end-to-end in-browser** (2026-07-12): a `/stats` dashboard (your top games, a win-rate leaderboard across everyone visible to you, your average score by player count, a monthly plays/wins bar chart) and `/stats/head-to-head` (pick any two players, see shared plays and each one's win count). See `src/handlers/stats.rs`.
+- **Every stats query reuses `plays::VISIBLE_TO`** (same rule as the feed/detail pages) plus a "counts toward stats" filter (a play only counts for a player if it's a guest link or an *approved* registered-user link — pending/declined never count). Verified in testing: a declined play never appears in the declining user's own stats, and the leaderboard/head-to-head are computed relative to what's visible to the *viewer*, so two different users looking at the same leaderboard can legitimately see different numbers (this is intentional, not a bug — it's the same privacy model as the play feed).
+- Stats are inherently "from the viewer's perspective" — there's no global/admin cross-user stats view showing everything regardless of visibility, consistent with the rest of the app.
+
+## UI/UX goals
+- Visually appealing, not a bare-bones CRUD UI
+- Mobile-friendly / responsive — primary usage will likely be from phones over the Tailscale Funnel URL
+- Support custom player photos
+- Location tracking for plays (e.g. "played at Mike's house")
+- **Installable as a PWA on mobile** (added 2026-07-12)
+
+**First visual pass done and tested** (2026-07-12): converted the plays feed from a plain table to card layout with game thumbnails (matching the collection page's existing card style); added a stat-tiles row (plays logged / games played / your win rate) and meter-bar win-rate visualization to the stats page (`--color-primary-track` CSS var added — a lighter step of the same accent hue, so the filled/unfilled bar reads as one coherent element per the dataviz skill's meter guidance, not just an arbitrary color on neutral gray). Found and fixed a real mobile bug in the process: the header nav used `flex-wrap: nowrap` by default, so 6+ nav items forced every page ~530px wide on a 375px viewport — now wraps properly, verified zero horizontal overflow across collection/plays/stats pages at mobile width. Tables also get a defensive `overflow-x: auto` fallback below 600px viewport width, in case a wide table shows up on a narrow screen elsewhere. Still not done: game-card visual polish beyond the thumbnail addition, and no icons/branding beyond the generated PWA icon.
+
+**PWA installability built and tested** (2026-07-12): manifest at `/static/manifest.webmanifest`, a deliberately minimal service worker (no caching — this app's data changes too often for a stale cache to be safe; the SW exists only to satisfy installability criteria) served at `/sw.js` (root path, not `/static/sw.js`, so its scope covers the whole app), and iOS/Android meta tags + icon links in the shared `templates/partials/head.html` (applies to every page automatically). Icons are a simple generated "5-pips die face" mark on the app's indigo brand color (192px/512px/512px-maskable) — built with a throwaway `image`-crate example script, not hand-designed; replace `static/icons/*.png` with real branding whenever that exists. Verified in-browser: service worker registers at root scope (`http://.../`), manifest and all icon URLs return 200, no console errors. Note for local dev: the browser's HTTP cache can be stubborn about picking up `static/style.css` changes after an edit — a normal hard-refresh works for real users in real browsers; this only bit the *testing* tooling in this session, not the app.
+
+## Additional locked-in features (beyond original scope)
+- **BG Catalog JSON import:** one-time migration from a user's existing BG Catalog export, matching games via `bgg_id`. **Built and tested against the developer's real export** (2026-07-12): 118 games / 9 locations / 235 plays / 631 player-play records / 6 photos, all imported correctly on the first real run (one bug fixed along the way — BG Catalog's `winner` field can be `null`, not just 0/1). Confirmed decisions: every player becomes a guest **except** the export's own "me" player, which links to the importing user's real account (approved) since that's an unambiguous identity, not a name-guess; imported plays default to **private** visibility since they were never shared with anyone in the old app. **Available to any fully-onboarded user, not just admins** (fixed 2026-07-12 — originally built under `/admin/*` by default, but the import logic always attributes plays to whoever's running it, so any user can bring in their own BG Catalog history into their own account). Upload UI at `/import/bgcatalog` (linked from the dashboard), multipart .zip upload. See `src/bgcatalog_import.rs` (parser/importer) and `src/handlers/admin_import.rs`.
+- **Data export:** the reverse of the BG Catalog import — a user downloads their own data as a self-contained .zip. **Built and tested** (2026-07-12): scope is a user's own collection plus every play they logged or are an *approved* linked player on (their full personal history, even for plays someone else logged), in our own schema-native JSON (not BG Catalog's format — simpler to build completely, and directly re-importable into another instance of this app later) plus a `photos/{play_id}/...` folder in the same zip. Verified in testing: a second user's export contained only their own 2 plays, correctly excluding the admin's 235 private imported plays — no cross-user leakage. `GET /export`, linked from the dashboard. See `src/data_export.rs` and `src/handlers/export.rs`.
+- **Play photos:** up to 5 per play, resized/re-encoded on upload (saves Pi storage, and incidentally strips phone GPS EXIF data — keep that behavior deliberate). **Built and tested** (2026-07-12): served through an authenticated route (`GET /photos/{play_id}/{filename}`) that re-checks the same play-visibility rule as everything else — this was the exact gap the earlier design review flagged (photos must never be guessable public URLs under `/static`), now closed and verified: a user who can't see a play gets 404 on its photos too, even with a guessed/correct filename. Uploads go through `image`-crate decode→resize (max 1600px long edge)→re-encode-as-JPEG, which both validates the file is a real image (garbage files are silently rejected, confirmed not to crash the server) and strips EXIF/GPS as a side effect of re-encoding; uploaded filenames are randomly generated, never the browser-supplied name. Cap of 5 enforced server-side regardless of how many files are POSTed at once (tested: posting 5 more against an existing 1 correctly saved only 4). Only the play's logger or an approved linked player can upload (tested: an unrelated user who can still *view* a public play gets 403 trying to add a photo to it). See `src/handlers/photos.rs` (serving) and `upload_photos` in `src/handlers/plays.rs`.
+- **Expansions:** `games.base_game_id` links an expansion to its base game generally; `play_expansions` records which expansions were used in one specific play
+- **Admin user removal is a soft-delete** (`users.is_active`), not a hard delete — other people's plays/stats legitimately reference removed users, so their history must survive
+
+## Explicitly out of scope for v1
+- Social media sharing of wins/rankings (not wanted)
+- Two-way BGG sync / writing plays back to BGG (not reliably supported by BGG's API)
+- Friend-request/follow system (unnecessary for a small hand-invited group)
+- Self-registration / invite links (admin creates accounts directly instead)
+
+## Reference app (for feature/design inspiration only — not code)
+**BG Catalog** by Javi Pacheco (bgcatalog.app / Google Play: `com.gadestudios.boardgame`). Notable features that informed this plan: status tags for collection items, friends + location on plays, win-rate and player-comparison stats, monthly played/won charts. We are not copying its code or UI, only drawing feature inspiration.
+
+## Current status / where to start
+- Rust + Cargo installed via rustup (winget); MSVC Build Tools installed (needed an elevated/admin terminal, since UAC prompts can't be approved from the tool-calling shell).
+- SQLite schema finalized at `migrations/0001_init.sql` — users, games, game_status, players, locations, plays, play_players, play_photos, play_expansions, notifications.
+- Cargo project scaffolded (Axum + sqlx + Askama + argon2 + tower-sessions + totp-rs).
+- **Auth is built and tested end-to-end in-browser**: bootstrap admin → login → forced password change → mandatory TOTP setup → dashboard; admin can create new users; non-admins correctly blocked from `/admin/*` (403). See `src/security.rs` (password/TOTP helpers, session middleware) and `src/handlers/{auth,admin,dashboard}.rs`.
+- A design review (via a Fable-model agent) flagged and we've since addressed: session-library version mismatch, missing SQLite WAL/busy-timeout settings, missing indexes, soft-delete for users, play-visibility enforcement (built), photos served through an authenticated handler rather than the public `/static` folder (built, see "Play photos" above). Still open: password reset flow (no email — will be admin-assisted), backup strategy for the Pi's SQLite file still undecided.
+
+- **Collection management is built and tested end-to-end in-browser**: BGG search (client built, currently blocked on the API auth requirement above), manual game entry, multi-status toggle pills (add/remove, verified simultaneous statuses work), viewing your own collection (editable) vs. another user's (read-only, verified no edit controls leak through). See `src/bgg.rs` (BGG XML client), `src/handlers/collection.rs`.
+
+- **Play logging is built and tested end-to-end in-browser** — see the "Play logging" section above for what's implemented, the visibility interpretation call, and what's deferred (player roster editing).
+
+- **Stats are built and tested end-to-end in-browser** — see the "Stats to support" section above for what's implemented and how visibility is enforced.
+
+- **BG Catalog JSON import is built and tested against the real export** — see "Additional locked-in features" above for what's implemented and the decisions made (guest-by-default player mapping, "me" player special-cased to the real admin account, private default visibility).
+
+**Remaining build order:** BGG sync (last, since it's optional/non-core, and blocked on getting a BGG API token — see Collection management above) → GitHub Actions cross-compile pipeline for the Pi → actual Pi deployment. Core v1 feature set (auth, collection, play logging, stats, BG Catalog import) is now functionally complete; everything left is either external-dependency-gated (BGG) or deployment/ops (CI, Pi setup) rather than new app features.
