@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Games</h1>
+        <p class="hint">Every game anyone has added, shared across all users &mdash; check here before adding a new one to avoid duplicates.</p>
+        <p><a href="/collection/add" class="button">+ Add from BGG</a> <a href="/collection/add/manual" class="button secondary">Add manually</a>
+        {% if is_admin %} <a href="/admin/games/merge" class="button secondary">Merge duplicates</a>{% endif %}</p>
+
+        {% if games.is_empty() %}
+        <p class="hint">No games in the system yet.</p>
+        {% endif %}
+
+        <div class="game-list">
+        {% for g in games %}
+            <div class="game-card">
+                {% if let Some(thumb) = g.thumbnail_url %}
+                <img src="{{ thumb }}" alt="" class="game-thumb">
+                {% else %}
+                <div class="game-thumb game-thumb-placeholder"></div>
+                {% endif %}
+                <div class="game-info">
+                    <h3><a href="/games/{{ g.id }}" class="inline-link">{{ g.name }}</a>{% if let Some(y) = g.year_published %} <span class="muted">({{ y }})</span>{% endif %}</h3>
+                    <p class="muted">
+                        {% if g.is_expansion %}Expansion{% endif %}
+                        {% if let Some(min) = g.min_players %}{% if g.is_expansion %} &middot; {% endif %}{{ min }}{% if let Some(max) = g.max_players %}–{{ max }}{% endif %} players{% endif %}
+                    </p>
+                    {% if g.in_my_collection %}<span class="badge admin">In your collection</span>{% endif %}
+                </div>
+            </div>
+        {% endfor %}
+        </div>
+    </main>
+</body>
+</html>

@@ -14,6 +14,7 @@ use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteSynchronous};
 use std::str::FromStr;
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_sessions::cookie::time::Duration as CookieDuration;
 use tower_sessions::session_store::ExpiredDeletion;
 use tower_sessions::{Expiry, SessionManagerLayer};
@@ -74,16 +75,35 @@ async fn main() {
             .continuously_delete_expired(tokio::time::Duration::from_secs(60 * 60)),
     );
 
+    let insecure_cookies = std::env::var("INSECURE_COOKIES")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+    if insecure_cookies {
+        tracing::warn!(
+            "INSECURE_COOKIES is set - session cookies will be sent over plain HTTP. \
+             This is for local LAN testing only and must never be set in production."
+        );
+    }
+
     let session_layer = SessionManagerLayer::new(session_store)
-        .with_expiry(Expiry::OnInactivity(CookieDuration::days(30)));
+        .with_expiry(Expiry::OnInactivity(CookieDuration::days(30)))
+        .with_secure(!insecure_cookies);
 
     let state = AppState { db };
 
-    // Reachable without being logged in at all.
-    let public_routes = Router::new().route(
-        "/login",
-        get(handlers::auth::login_form).post(handlers::auth::login),
-    );
+    // Reachable without being logged in at all. /auth/verify-2fa belongs here
+    // (not under require_session) because at that point the user only has a
+    // "pending_2fa_user_id" - they aren't logged in yet by require_session's
+    // definition, which checks for "user_id".
+    let public_routes = Router::new()
+        .route(
+            "/login",
+            get(handlers::auth::login_form).post(handlers::auth::login),
+        )
+        .route(
+            "/auth/verify-2fa",
+            get(handlers::auth::verify_2fa_form).post(handlers::auth::verify_2fa),
+        );
 
     // Reachable with a valid session, even mid-onboarding (forced password
     // change / mandatory 2FA setup) — these routes ARE the onboarding gates,
@@ -105,6 +125,28 @@ async fn main() {
         .route(
             "/admin/users/new",
             get(handlers::admin::new_user_form).post(handlers::admin::create_user),
+        )
+        .route("/admin/users/{id}/reset", post(handlers::admin::reset_user))
+        .route(
+            "/admin/users/{id}/deactivate",
+            post(handlers::admin::deactivate_user),
+        )
+        .route(
+            "/admin/users/{id}/reactivate",
+            post(handlers::admin::reactivate_user),
+        )
+        .route(
+            "/admin/users/{id}/unlock",
+            post(handlers::admin::unlock_user),
+        )
+        .route("/admin/security", get(handlers::admin::security_log))
+        .route(
+            "/admin/security/unban/{ip}",
+            post(handlers::admin::unban_ip),
+        )
+        .route(
+            "/admin/games/merge",
+            get(handlers::games::merge_games_form).post(handlers::games::merge_games),
         )
         .layer(from_fn(security::require_admin));
 
@@ -157,6 +199,10 @@ async fn main() {
             get(handlers::plays::edit_play_form).post(handlers::plays::update_play),
         )
         .route(
+            "/plays/{play_id}/delete",
+            post(handlers::plays::delete_play),
+        )
+        .route(
             "/plays/{play_id}/photos",
             post(handlers::plays::upload_photos).layer(DefaultBodyLimit::max(30 * 1024 * 1024)),
         )
@@ -172,12 +218,36 @@ async fn main() {
             "/notifications/{id}/decline",
             post(handlers::notifications::decline),
         )
+        .route(
+            "/notifications/unread-count",
+            get(handlers::notifications::unread_count),
+        )
         .route("/stats", get(handlers::stats::show_stats))
         .route("/stats/head-to-head", get(handlers::stats::head_to_head))
         .route(
             "/photos/{play_id}/{filename}",
             get(handlers::photos::serve_photo),
         );
+
+    let profile_routes = Router::new()
+        .route("/games", get(handlers::games::list_games))
+        .route("/games/{game_id}", get(handlers::games::view_game))
+        .route("/users/{username}", get(handlers::users::view_profile))
+        .route(
+            "/users/{username}/photo",
+            get(handlers::users::serve_profile_photo),
+        )
+        .route(
+            "/profile/photo",
+            post(handlers::users::upload_profile_photo)
+                .layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
+        .route(
+            "/profile/photo/delete",
+            post(handlers::users::delete_profile_photo),
+        )
+        .route("/profile/name", post(handlers::users::update_name))
+        .route("/settings", get(handlers::settings::show_settings));
 
     // Everything else requires a fully onboarded (password changed, 2FA
     // enabled) active user.
@@ -188,6 +258,7 @@ async fn main() {
         .merge(export_routes)
         .merge(collection_routes)
         .merge(play_routes)
+        .merge(profile_routes)
         .layer(from_fn_with_state(
             state.clone(),
             security::require_full_auth,
@@ -197,7 +268,14 @@ async fn main() {
         .merge(public_routes)
         .merge(onboarding_routes)
         .merge(app_routes)
-        .nest_service("/static", ServeDir::new("static"))
+        .merge(
+            Router::new()
+                .nest_service("/static", ServeDir::new("static"))
+                .layer(SetResponseHeaderLayer::overriding(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("no-cache"),
+                )),
+        )
         // Served at the root path (not /static/sw.js) so its default scope
         // covers the whole app, not just /static/.
         .route_service("/sw.js", ServeFile::new("static/sw.js"))
@@ -206,5 +284,10 @@ async fn main() {
 
     tracing::info!("listening on {bind_addr}");
     let listener = tokio::net::TcpListener::bind(&bind_addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }

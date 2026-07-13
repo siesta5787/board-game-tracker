@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <div class="game-detail-header">
+            {% if let Some(img) = game.image_url %}
+            <img src="{{ img }}" alt="" class="game-detail-image">
+            {% else if let Some(thumb) = game.thumbnail_url %}
+            <img src="{{ thumb }}" alt="" class="game-detail-image">
+            {% else %}
+            <div class="game-detail-image game-thumb-placeholder"></div>
+            {% endif %}
+            <div>
+                <h1>{{ game.name }}{% if let Some(y) = game.year_published %} <span class="muted">({{ y }})</span>{% endif %}</h1>
+                {% if game.is_expansion %}
+                <p class="muted">
+                    Expansion
+                    {% if let Some(bg_id) = game.base_game_id %}
+                        {% if let Some(bg_name) = game.base_game_name %}
+                        for <a href="/games/{{ bg_id }}">{{ bg_name }}</a>
+                        {% endif %}
+                    {% endif %}
+                </p>
+                {% endif %}
+                <p class="muted">
+                    {% if let Some(min) = game.min_players %}{{ min }}{% if let Some(max) = game.max_players %}–{{ max }}{% endif %} players{% endif %}
+                    {% if let Some(min_pt) = game.min_playtime %} &middot; {{ min_pt }}{% if let Some(max_pt) = game.max_playtime %}–{{ max_pt }}{% endif %} min{% endif %}
+                    {% if let Some(age) = game.min_age %} &middot; ages {{ age }}+{% endif %}
+                    {% if let Some(w) = game.weight %} &middot; weight {{ w }}{% endif %}
+                    {% if let Some(r) = game.average_rating %} &middot; BGG rating {{ r }}{% endif %}
+                </p>
+                {% if let Some(d) = game.designers %}
+                <p class="muted">Designed by {{ d }}</p>
+                {% endif %}
+                {% if let Some(a) = game.artists %}
+                <p class="muted">Art by {{ a }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if let Some(n) = game.notes %}
+        <p>{{ n }}</p>
+        {% endif %}
+
+        <h2>Your collection</h2>
+        <div class="status-pills">
+            <form method="post" action="/collection/{{ game_id }}/status/owned/{% if is_owned %}remove{% else %}add{% endif %}" class="pill-form">
+                <button type="submit" class="pill {% if is_owned %}pill-active{% endif %}">Owned</button>
+            </form>
+            <form method="post" action="/collection/{{ game_id }}/status/wishlist/{% if is_wishlist %}remove{% else %}add{% endif %}" class="pill-form">
+                <button type="submit" class="pill {% if is_wishlist %}pill-active{% endif %}">Wishlist</button>
+            </form>
+            <form method="post" action="/collection/{{ game_id }}/status/preordered/{% if is_preordered %}remove{% else %}add{% endif %}" class="pill-form">
+                <button type="submit" class="pill {% if is_preordered %}pill-active{% endif %}">Pre-ordered</button>
+            </form>
+            <form method="post" action="/collection/{{ game_id }}/status/for_sale/{% if is_for_sale %}remove{% else %}add{% endif %}" class="pill-form">
+                <button type="submit" class="pill {% if is_for_sale %}pill-active{% endif %}">For Sale</button>
+            </form>
+            <form method="post" action="/collection/{{ game_id }}/status/played/{% if is_played %}remove{% else %}add{% endif %}" class="pill-form">
+                <button type="submit" class="pill {% if is_played %}pill-active{% endif %}">Played</button>
+            </form>
+            <form method="post" action="/collection/{{ game_id }}/status/want_to_play/{% if is_want_to_play %}remove{% else %}add{% endif %}" class="pill-form">
+                <button type="submit" class="pill {% if is_want_to_play %}pill-active{% endif %}">Want to Play</button>
+            </form>
+            <form method="post" action="/collection/{{ game_id }}/status/want_to_trade/{% if is_want_to_trade %}remove{% else %}add{% endif %}" class="pill-form">
+                <button type="submit" class="pill {% if is_want_to_trade %}pill-active{% endif %}">Want to Trade</button>
+            </form>
+        </div>
+
+        <h2>Recent plays</h2>
+        {% if recent_plays.is_empty() %}
+        <p class="hint">No plays of this game visible to you yet.</p>
+        {% else %}
+        <table>
+            <thead>
+                <tr><th>Date</th><th>Logged by</th></tr>
+            </thead>
+            <tbody>
+            {% for p in recent_plays %}
+                <tr>
+                    <td><a href="/plays/{{ p.id }}">{{ p.play_date }}</a></td>
+                    <td><a href="/users/{{ p.logged_by_username }}">{{ p.logged_by_display_name }}</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </main>
+</body>
+</html>

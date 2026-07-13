@@ -15,22 +15,23 @@
 
         <div class="game-list">
         {% for p in plays %}
-            <a href="/plays/{{ p.id }}" class="game-card play-card">
+            <div class="game-card play-card">
                 {% if let Some(thumb) = p.thumbnail_url %}
                 <img src="{{ thumb }}" alt="" class="game-thumb">
                 {% else %}
                 <div class="game-thumb game-thumb-placeholder"></div>
                 {% endif %}
                 <div class="game-info">
-                    <h3>{{ p.game_name }}</h3>
+                    <h3><a href="/games/{{ p.game_id }}" class="inline-link">{{ p.game_name }}</a></h3>
                     <p class="muted">
                         {{ p.play_date }}
                         {% if let Some(loc) = p.location_name %} &middot; {{ loc }}{% endif %}
-                        &middot; logged by {{ p.logged_by_username }}
+                        &middot; logged by <a href="/users/{{ p.logged_by_username }}" class="inline-link">{{ p.logged_by_display_name }}</a>
                     </p>
                     <span class="badge">{{ p.visibility }}</span>
                 </div>
-            </a>
+                <a href="/plays/{{ p.id }}" class="card-stretched-link" aria-label="View play"></a>
+            </div>
         {% endfor %}
         </div>
     </main>

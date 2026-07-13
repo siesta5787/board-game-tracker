@@ -6,9 +6,17 @@ use serde::Deserialize;
 
 use crate::AppState;
 use crate::bgg::{self, GameDetails, SearchResult};
-use crate::security::CurrentUser;
+use crate::security::{self, CurrentUser};
 
-const STATUSES: [&str; 5] = ["owned", "want_to_buy", "wishlist", "preordered", "for_sale"];
+const STATUSES: [&str; 7] = [
+    "owned",
+    "wishlist",
+    "preordered",
+    "for_sale",
+    "played",
+    "want_to_play",
+    "want_to_trade",
+];
 
 pub async fn redirect_to_own(
     Extension(CurrentUser(user)): Extension<CurrentUser>,
@@ -37,10 +45,12 @@ pub struct CollectionEntry {
     pub weight: Option<String>,
     pub thumbnail_url: Option<String>,
     pub is_owned: bool,
-    pub is_want_to_buy: bool,
     pub is_wishlist: bool,
     pub is_preordered: bool,
     pub is_for_sale: bool,
+    pub is_played: bool,
+    pub is_want_to_play: bool,
+    pub is_want_to_trade: bool,
 }
 
 impl From<CollectionRow> for CollectionEntry {
@@ -55,12 +65,19 @@ impl From<CollectionRow> for CollectionEntry {
             weight: row.weight.map(|w| format!("{w:.1}")),
             thumbnail_url: row.thumbnail_url,
             is_owned: statuses.contains(&"owned"),
-            is_want_to_buy: statuses.contains(&"want_to_buy"),
             is_wishlist: statuses.contains(&"wishlist"),
             is_preordered: statuses.contains(&"preordered"),
             is_for_sale: statuses.contains(&"for_sale"),
+            is_played: statuses.contains(&"played"),
+            is_want_to_play: statuses.contains(&"want_to_play"),
+            is_want_to_trade: statuses.contains(&"want_to_trade"),
         }
     }
+}
+
+#[derive(Deserialize)]
+pub struct CollectionQuery {
+    status: Option<String>,
 }
 
 #[derive(Template)]
@@ -68,53 +85,82 @@ impl From<CollectionRow> for CollectionEntry {
 struct CollectionTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     collection_owner: String,
+    collection_owner_display: String,
     is_own_collection: bool,
     entries: Vec<CollectionEntry>,
+    status_filter: Option<String>,
+    statuses: [(&'static str, &'static str); 7],
 }
 
 pub async fn view_collection(
     State(state): State<AppState>,
     Extension(CurrentUser(current)): Extension<CurrentUser>,
     Path(username): Path<String>,
+    Query(params): Query<CollectionQuery>,
 ) -> impl IntoResponse {
-    let owner_id: Option<i64> =
-        sqlx::query_scalar("SELECT id FROM users WHERE username = ? AND is_active = 1")
-            .bind(&username)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten();
+    let owner: Option<(i64, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT id, first_name, last_name FROM users WHERE username = ? AND is_active = 1",
+    )
+    .bind(&username)
+    .fetch_optional(&state.db)
+    .await
+    .ok()
+    .flatten();
 
-    let Some(owner_id) = owner_id else {
+    let Some((owner_id, owner_first, owner_last)) = owner else {
         return (axum::http::StatusCode::NOT_FOUND, "User not found").into_response();
     };
+    let collection_owner_display =
+        security::display_name(&username, owner_first.as_deref(), owner_last.as_deref());
 
-    let rows = sqlx::query_as::<_, CollectionRow>(
-        "SELECT g.id, g.name, g.year_published, g.min_players, g.max_players, g.weight, g.thumbnail_url, \
-                GROUP_CONCAT(gs.status) AS statuses \
-         FROM games g \
-         JOIN game_status gs ON gs.game_id = g.id \
-         WHERE gs.user_id = ? \
-         GROUP BY g.id \
-         ORDER BY g.name",
-    )
-    .bind(owner_id)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    let status_filter = params.status.filter(|s| STATUSES.contains(&s.as_str()));
+
+    let rows = if let Some(status) = &status_filter {
+        sqlx::query_as::<_, CollectionRow>(
+            "SELECT g.id, g.name, g.year_published, g.min_players, g.max_players, g.weight, g.thumbnail_url, \
+                    GROUP_CONCAT(gs.status) AS statuses \
+             FROM games g \
+             JOIN game_status gs ON gs.game_id = g.id \
+             WHERE gs.user_id = ? \
+               AND g.id IN (SELECT game_id FROM game_status WHERE user_id = ? AND status = ?) \
+             GROUP BY g.id \
+             ORDER BY g.name",
+        )
+        .bind(owner_id)
+        .bind(owner_id)
+        .bind(status)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default()
+    } else {
+        sqlx::query_as::<_, CollectionRow>(
+            "SELECT g.id, g.name, g.year_published, g.min_players, g.max_players, g.weight, g.thumbnail_url, \
+                    GROUP_CONCAT(gs.status) AS statuses \
+             FROM games g \
+             JOIN game_status gs ON gs.game_id = g.id \
+             WHERE gs.user_id = ? \
+             GROUP BY g.id \
+             ORDER BY g.name",
+        )
+        .bind(owner_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default()
+    };
 
     let entries = rows.into_iter().map(CollectionEntry::from).collect();
 
     Html(
         CollectionTemplate {
-            title: format!("{username}'s collection"),
+            title: format!("{collection_owner_display}'s collection"),
             username: current.username.clone(),
-            is_admin: current.is_admin,
             collection_owner: username.clone(),
+            collection_owner_display,
             is_own_collection: current.username == username,
             entries,
+            status_filter,
+            statuses: status_options(),
         }
         .render()
         .unwrap(),
@@ -132,11 +178,10 @@ pub struct SearchQuery {
 struct CollectionAddTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     query: String,
     results: Vec<SearchResult>,
     error: Option<String>,
-    statuses: [(&'static str, &'static str); 5],
+    statuses: [(&'static str, &'static str); 7],
 }
 
 pub async fn add_search_form(
@@ -167,7 +212,6 @@ pub async fn add_search_form(
         CollectionAddTemplate {
             title: "Add a game".to_string(),
             username: current.username,
-            is_admin: current.is_admin,
             query,
             results,
             error,
@@ -178,13 +222,15 @@ pub async fn add_search_form(
     )
 }
 
-fn status_options() -> [(&'static str, &'static str); 5] {
+fn status_options() -> [(&'static str, &'static str); 7] {
     [
         ("owned", "Owned"),
-        ("want_to_buy", "Want to Buy"),
         ("wishlist", "Wishlist"),
         ("preordered", "Pre-ordered"),
         ("for_sale", "For Sale"),
+        ("played", "Played"),
+        ("want_to_play", "Want to Play"),
+        ("want_to_trade", "Want to Trade"),
     ]
 }
 
@@ -236,6 +282,46 @@ async fn upsert_game_from_bgg(state: &AppState, details: &GameDetails) -> Result
         .fetch_optional(&state.db)
         .await?
     {
+        return Ok(id);
+    }
+
+    // Someone may have already added this exact game manually (or from a
+    // different source) before it was ever looked up on BGG. Names are kept
+    // unique across the whole games table, so reuse that row instead of
+    // creating a duplicate — and if it was a bare manual entry (no bgg_id
+    // yet), upgrade it in place with the real BGG metadata we just fetched.
+    let existing_by_name: Option<(i64, Option<i64>)> =
+        sqlx::query_as("SELECT id, bgg_id FROM games WHERE name = ? COLLATE NOCASE")
+            .bind(&details.name)
+            .fetch_optional(&state.db)
+            .await?;
+
+    if let Some((id, existing_bgg_id)) = existing_by_name {
+        if existing_bgg_id.is_none() {
+            sqlx::query(
+                "UPDATE games SET bgg_id = ?, year_published = ?, min_players = ?, max_players = ?, \
+                        min_playtime = ?, max_playtime = ?, min_age = ?, designers = ?, artists = ?, \
+                        thumbnail_url = ?, image_url = ?, average_rating = ?, weight = ?, is_expansion = ? \
+                 WHERE id = ?",
+            )
+            .bind(details.bgg_id)
+            .bind(details.year_published)
+            .bind(details.min_players)
+            .bind(details.max_players)
+            .bind(details.min_playtime)
+            .bind(details.max_playtime)
+            .bind(details.min_age)
+            .bind(&details.designers)
+            .bind(&details.artists)
+            .bind(&details.thumbnail_url)
+            .bind(&details.image_url)
+            .bind(details.average_rating)
+            .bind(details.weight)
+            .bind(details.is_expansion)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
+        }
         return Ok(id);
     }
 
@@ -295,9 +381,9 @@ async fn add_status_row(state: &AppState, user_id: i64, game_id: i64, status: &s
 struct ManualAddTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     error: Option<String>,
-    statuses: [(&'static str, &'static str); 5],
+    existing_game: Option<(i64, String)>,
+    statuses: [(&'static str, &'static str); 7],
 }
 
 pub async fn manual_add_form(
@@ -307,8 +393,8 @@ pub async fn manual_add_form(
         ManualAddTemplate {
             title: "Add a game manually".to_string(),
             username: current.username,
-            is_admin: current.is_admin,
             error: None,
+            existing_game: None,
             statuses: status_options(),
         }
         .render()
@@ -319,8 +405,14 @@ pub async fn manual_add_form(
 #[derive(Deserialize)]
 pub struct ManualAddForm {
     name: String,
-    min_players: Option<i32>,
-    max_players: Option<i32>,
+    // Deliberately String, not Option<i32>: an empty form field deserializes
+    // to Some("") for an Option<String>, but axum's Form extractor rejects
+    // the whole request outright if it's typed Option<i32> and the field is
+    // blank (it tries to parse "" as an int and fails before the handler
+    // even runs). Parsed manually below instead, where blank/invalid just
+    // means "not specified."
+    min_players: String,
+    max_players: String,
     status: String,
 }
 
@@ -329,41 +421,59 @@ pub async fn create_manual(
     Extension(CurrentUser(current)): Extension<CurrentUser>,
     Form(form): Form<ManualAddForm>,
 ) -> impl IntoResponse {
-    let render_error = |msg: &str| -> axum::response::Response {
-        Html(
-            ManualAddTemplate {
-                title: "Add a game manually".to_string(),
-                username: current.username.clone(),
-                is_admin: current.is_admin,
-                error: Some(msg.to_string()),
-                statuses: status_options(),
-            }
-            .render()
-            .unwrap(),
-        )
-        .into_response()
-    };
+    let render_error =
+        |msg: &str, existing_game: Option<(i64, String)>| -> axum::response::Response {
+            Html(
+                ManualAddTemplate {
+                    title: "Add a game manually".to_string(),
+                    username: current.username.clone(),
+                    error: Some(msg.to_string()),
+                    existing_game,
+                    statuses: status_options(),
+                }
+                .render()
+                .unwrap(),
+            )
+            .into_response()
+        };
 
     let name = form.name.trim();
     if name.is_empty() {
-        return render_error("Game name can't be empty.");
+        return render_error("Game name can't be empty.", None);
     }
     if !STATUSES.contains(&form.status.as_str()) {
-        return render_error("Invalid status.");
+        return render_error("Invalid status.", None);
     }
+
+    let existing: Option<(i64, String)> =
+        sqlx::query_as("SELECT id, name FROM games WHERE name = ? COLLATE NOCASE")
+            .bind(name)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+    if let Some((id, existing_name)) = existing {
+        return render_error(
+            "A game with that name is already in the system.",
+            Some((id, existing_name)),
+        );
+    }
+
+    let min_players: Option<i32> = form.min_players.trim().parse().ok();
+    let max_players: Option<i32> = form.max_players.trim().parse().ok();
 
     let game_id: Result<i64, sqlx::Error> = sqlx::query_scalar(
         "INSERT INTO games (bgg_id, name, min_players, max_players) VALUES (NULL, ?, ?, ?) RETURNING id",
     )
     .bind(name)
-    .bind(form.min_players)
-    .bind(form.max_players)
+    .bind(min_players)
+    .bind(max_players)
     .fetch_one(&state.db)
     .await;
 
     let game_id = match game_id {
         Ok(id) => id,
-        Err(_) => return render_error("Something went wrong saving that game."),
+        Err(_) => return render_error("Something went wrong saving that game.", None),
     };
 
     add_status_row(&state, current.id, game_id, &form.status).await;
@@ -371,22 +481,44 @@ pub async fn create_manual(
     Redirect::to(&format!("/collection/{}", current.username)).into_response()
 }
 
+/// Sends the user back wherever the status-toggle form was submitted from
+/// (their own collection page, or a game's detail page), falling back to
+/// their collection if the browser didn't send a Referer. Only the path is
+/// ever taken from the (client-controlled) Referer header, never the scheme
+/// or host, so this can't be used to redirect off our own site.
+fn redirect_back(headers: &axum::http::HeaderMap, fallback_username: &str) -> Redirect {
+    let path = headers
+        .get(axum::http::header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|referer| {
+            let after_scheme = referer.splitn(2, "://").nth(1)?;
+            let path_start = after_scheme.find('/')?;
+            Some(after_scheme[path_start..].to_string())
+        });
+    match path {
+        Some(p) if !p.is_empty() => Redirect::to(&p),
+        _ => Redirect::to(&format!("/collection/{fallback_username}")),
+    }
+}
+
 pub async fn add_status(
     State(state): State<AppState>,
     Extension(CurrentUser(current)): Extension<CurrentUser>,
     Path((game_id, status)): Path<(i64, String)>,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     if !STATUSES.contains(&status.as_str()) {
         return (axum::http::StatusCode::BAD_REQUEST, "Invalid status").into_response();
     }
     add_status_row(&state, current.id, game_id, &status).await;
-    Redirect::to(&format!("/collection/{}", current.username)).into_response()
+    redirect_back(&headers, &current.username).into_response()
 }
 
 pub async fn remove_status(
     State(state): State<AppState>,
     Extension(CurrentUser(current)): Extension<CurrentUser>,
     Path((game_id, status)): Path<(i64, String)>,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
     if !STATUSES.contains(&status.as_str()) {
         return (axum::http::StatusCode::BAD_REQUEST, "Invalid status").into_response();
@@ -398,5 +530,5 @@ pub async fn remove_status(
         .execute(&state.db)
         .await
         .ok();
-    Redirect::to(&format!("/collection/{}", current.username)).into_response()
+    redirect_back(&headers, &current.username).into_response()
 }

@@ -1,11 +1,12 @@
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::{Extension, Form};
+use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::AppState;
-use crate::plays::{VISIBLE_OR_TAGGED, VISIBLE_TO};
+use crate::plays::{DISPLAY_NAME_SQL, VISIBLE_OR_TAGGED, VISIBLE_TO};
 use crate::security::CurrentUser;
 
 const VISIBILITIES: [&str; 3] = ["public", "linked_only", "private"];
@@ -29,14 +30,16 @@ async fn find_or_create_location(state: &AppState, name: &str) -> Option<i64> {
 }
 
 #[derive(sqlx::FromRow)]
-struct PlayFeedRow {
-    id: i64,
-    game_name: String,
-    thumbnail_url: Option<String>,
-    play_date: String,
-    location_name: Option<String>,
-    visibility: String,
-    logged_by_username: String,
+pub(crate) struct PlayFeedRow {
+    pub(crate) id: i64,
+    pub(crate) game_id: i64,
+    pub(crate) game_name: String,
+    pub(crate) thumbnail_url: Option<String>,
+    pub(crate) play_date: String,
+    pub(crate) location_name: Option<String>,
+    pub(crate) visibility: String,
+    pub(crate) logged_by_username: String,
+    pub(crate) logged_by_display_name: String,
 }
 
 #[derive(Template)]
@@ -44,7 +47,6 @@ struct PlayFeedRow {
 struct PlaysTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     plays: Vec<PlayFeedRow>,
 }
 
@@ -53,8 +55,9 @@ pub async fn list_plays(
     Extension(CurrentUser(current)): Extension<CurrentUser>,
 ) -> impl IntoResponse {
     let sql = format!(
-        "SELECT plays.id, games.name AS game_name, games.thumbnail_url, plays.play_date, \
-                locations.name AS location_name, plays.visibility, users.username AS logged_by_username \
+        "SELECT plays.id, games.id AS game_id, games.name AS game_name, games.thumbnail_url, plays.play_date, \
+                locations.name AS location_name, plays.visibility, users.username AS logged_by_username, \
+                {DISPLAY_NAME_SQL} AS logged_by_display_name \
          FROM plays \
          JOIN games ON games.id = plays.game_id \
          LEFT JOIN locations ON locations.id = plays.location_id \
@@ -73,7 +76,6 @@ pub async fn list_plays(
         PlaysTemplate {
             title: "Plays".to_string(),
             username: current.username,
-            is_admin: current.is_admin,
             plays,
         }
         .render()
@@ -81,17 +83,33 @@ pub async fn list_plays(
     )
 }
 
+struct PlayerOption {
+    id: i64,
+    username: String,
+    checked: bool,
+    score: Option<f64>,
+    is_winner: bool,
+}
+
+struct GuestSlot {
+    slot: i32,
+    name: String,
+    score: Option<f64>,
+    is_winner: bool,
+}
+
 #[derive(Template)]
 #[template(path = "play_new.html")]
 struct NewPlayTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     games: Vec<(i64, String)>,
-    active_users: Vec<(i64, String)>,
-    guest_slots: [i32; 4],
+    active_users: Vec<PlayerOption>,
+    guest_slots: Vec<GuestSlot>,
     today: String,
     error: Option<String>,
+    prefill_game_id: Option<i64>,
+    prefill_location: String,
 }
 
 async fn games_list(state: &AppState) -> Vec<(i64, String)> {
@@ -108,28 +126,141 @@ async fn active_users_list(state: &AppState) -> Vec<(i64, String)> {
         .unwrap_or_default()
 }
 
+#[derive(Default)]
+struct RosterPrefill {
+    users: Vec<(i64, Option<f64>, bool)>,
+    guests: Vec<(String, Option<f64>, bool)>,
+}
+
+async fn roster_prefill(state: &AppState, play_id: i64) -> RosterPrefill {
+    let rows: Vec<(Option<i64>, String, Option<f64>, bool)> = sqlx::query_as(
+        "SELECT players.user_id, players.name, play_players.score, play_players.is_winner \
+         FROM play_players \
+         JOIN players ON players.id = play_players.player_id \
+         WHERE play_players.play_id = ? \
+         ORDER BY play_players.id",
+    )
+    .bind(play_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let mut prefill = RosterPrefill::default();
+    for (user_id, name, score, is_winner) in rows {
+        match user_id {
+            Some(uid) => prefill.users.push((uid, score, is_winner)),
+            None => prefill.guests.push((name, score, is_winner)),
+        }
+    }
+    prefill
+}
+
+async fn active_users_options(state: &AppState, prefill: &RosterPrefill) -> Vec<PlayerOption> {
+    active_users_list(state)
+        .await
+        .into_iter()
+        .map(|(id, username)| {
+            let matched = prefill.users.iter().find(|(uid, _, _)| *uid == id);
+            PlayerOption {
+                id,
+                username,
+                checked: matched.is_some(),
+                score: matched.and_then(|(_, s, _)| *s),
+                is_winner: matched.map(|(_, _, w)| *w).unwrap_or(false),
+            }
+        })
+        .collect()
+}
+
+fn guest_slots_options(prefill: &RosterPrefill) -> Vec<GuestSlot> {
+    GUEST_SLOTS
+        .iter()
+        .map(|&slot| {
+            let idx = (slot - 1) as usize;
+            match prefill.guests.get(idx) {
+                Some((name, score, is_winner)) => GuestSlot {
+                    slot,
+                    name: name.clone(),
+                    score: *score,
+                    is_winner: *is_winner,
+                },
+                None => GuestSlot {
+                    slot,
+                    name: String::new(),
+                    score: None,
+                    is_winner: false,
+                },
+            }
+        })
+        .collect()
+}
+
+#[derive(Deserialize)]
+pub struct NewPlayQuery {
+    repeat_from: Option<i64>,
+}
+
 pub async fn new_play_form(
     State(state): State<AppState>,
     Extension(CurrentUser(current)): Extension<CurrentUser>,
+    Query(params): Query<NewPlayQuery>,
 ) -> impl IntoResponse {
-    render_new_play(&state, &current, None).await
+    let mut prefill_game_id = None;
+    let mut prefill_location = String::new();
+    let mut prefill = RosterPrefill::default();
+
+    if let Some(play_id) = params.repeat_from {
+        let sql = format!(
+            "SELECT plays.game_id, locations.name AS location_name \
+             FROM plays \
+             LEFT JOIN locations ON locations.id = plays.location_id \
+             WHERE plays.id = ? AND {VISIBLE_TO}"
+        );
+        if let Some((game_id, location_name)) = sqlx::query_as::<_, (i64, Option<String>)>(&sql)
+            .bind(play_id)
+            .bind(current.id)
+            .bind(current.id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+        {
+            prefill_game_id = Some(game_id);
+            prefill_location = location_name.unwrap_or_default();
+            prefill = roster_prefill(&state, play_id).await;
+        }
+    }
+
+    render_new_play(
+        &state,
+        &current,
+        None,
+        prefill_game_id,
+        prefill_location,
+        prefill,
+    )
+    .await
 }
 
 async fn render_new_play(
     state: &AppState,
     current: &crate::models::User,
     error: Option<String>,
+    prefill_game_id: Option<i64>,
+    prefill_location: String,
+    prefill: RosterPrefill,
 ) -> axum::response::Response {
     Html(
         NewPlayTemplate {
             title: "Log a play".to_string(),
             username: current.username.clone(),
-            is_admin: current.is_admin,
             games: games_list(state).await,
-            active_users: active_users_list(state).await,
-            guest_slots: GUEST_SLOTS,
+            active_users: active_users_options(state, &prefill).await,
+            guest_slots: guest_slots_options(&prefill),
             today: chrono::Local::now().format("%Y-%m-%d").to_string(),
             error,
+            prefill_game_id,
+            prefill_location,
         }
         .render()
         .unwrap(),
@@ -143,18 +274,42 @@ pub async fn create_play(
     Form(fields): Form<HashMap<String, String>>,
 ) -> impl IntoResponse {
     let Some(game_id) = fields.get("game_id").and_then(|s| s.parse::<i64>().ok()) else {
-        return render_new_play(&state, &current, Some("Please choose a game.".to_string())).await;
+        return render_new_play(
+            &state,
+            &current,
+            Some("Please choose a game.".to_string()),
+            None,
+            String::new(),
+            RosterPrefill::default(),
+        )
+        .await;
     };
     let play_date = fields.get("play_date").cloned().unwrap_or_default();
     if play_date.trim().is_empty() {
-        return render_new_play(&state, &current, Some("Please choose a date.".to_string())).await;
+        return render_new_play(
+            &state,
+            &current,
+            Some("Please choose a date.".to_string()),
+            None,
+            String::new(),
+            RosterPrefill::default(),
+        )
+        .await;
     }
     let visibility = fields
         .get("visibility")
         .cloned()
         .unwrap_or_else(|| "public".to_string());
     if !VISIBILITIES.contains(&visibility.as_str()) {
-        return render_new_play(&state, &current, Some("Invalid visibility.".to_string())).await;
+        return render_new_play(
+            &state,
+            &current,
+            Some("Invalid visibility.".to_string()),
+            None,
+            String::new(),
+            RosterPrefill::default(),
+        )
+        .await;
     }
 
     let location_name = fields
@@ -194,6 +349,9 @@ pub async fn create_play(
                 &state,
                 &current,
                 Some("Something went wrong saving that play. Check the game is valid.".to_string()),
+                None,
+                String::new(),
+                RosterPrefill::default(),
             )
             .await;
         }
@@ -301,6 +459,7 @@ pub async fn create_play(
 #[derive(sqlx::FromRow)]
 struct PlayDetailRow {
     id: i64,
+    game_id: i64,
     game_name: String,
     play_date: String,
     location_name: Option<String>,
@@ -309,11 +468,13 @@ struct PlayDetailRow {
     visibility: String,
     logged_by_user_id: i64,
     logged_by_username: String,
+    logged_by_display_name: String,
 }
 
 #[derive(sqlx::FromRow)]
 struct PlayPlayerRow {
     player_user_id: Option<i64>,
+    player_username: Option<String>,
     player_name: String,
     score: Option<f64>,
     is_winner: bool,
@@ -329,7 +490,6 @@ struct PhotoView {
 struct PlayDetailTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     play: PlayDetailRow,
     players: Vec<PlayPlayerRow>,
     photos: Vec<PhotoView>,
@@ -342,9 +502,9 @@ pub async fn view_play(
     Path(play_id): Path<i64>,
 ) -> impl IntoResponse {
     let sql = format!(
-        "SELECT plays.id, games.name AS game_name, plays.play_date, locations.name AS location_name, \
+        "SELECT plays.id, games.id AS game_id, games.name AS game_name, plays.play_date, locations.name AS location_name, \
                 plays.duration_minutes, plays.notes, plays.visibility, plays.logged_by_user_id, \
-                users.username AS logged_by_username \
+                users.username AS logged_by_username, {DISPLAY_NAME_SQL} AS logged_by_display_name \
          FROM plays \
          JOIN games ON games.id = plays.game_id \
          LEFT JOIN locations ON locations.id = plays.location_id \
@@ -366,10 +526,12 @@ pub async fn view_play(
     };
 
     let players = sqlx::query_as::<_, PlayPlayerRow>(
-        "SELECT players.user_id AS player_user_id, players.name AS player_name, \
+        "SELECT players.user_id AS player_user_id, users.username AS player_username, \
+                players.name AS player_name, \
                 play_players.score, play_players.is_winner, play_players.link_status \
          FROM play_players \
          JOIN players ON players.id = play_players.player_id \
+         LEFT JOIN users ON users.id = players.user_id \
          WHERE play_players.play_id = ? \
          ORDER BY play_players.id",
     )
@@ -389,7 +551,6 @@ pub async fn view_play(
         PlayDetailTemplate {
             title: play.game_name.clone(),
             username: current.username,
-            is_admin: current.is_admin,
             play,
             players,
             photos,
@@ -509,7 +670,6 @@ pub async fn upload_photos(
 struct EditPlayTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     play: PlayDetailRow,
     players: Vec<PlayPlayerRowWithId>,
     available_users: Vec<(i64, String)>,
@@ -554,9 +714,9 @@ async fn load_editable_play(
     play_id: i64,
 ) -> Option<(PlayDetailRow, bool)> {
     let sql = format!(
-        "SELECT plays.id, games.name AS game_name, plays.play_date, locations.name AS location_name, \
+        "SELECT plays.id, games.id AS game_id, games.name AS game_name, plays.play_date, locations.name AS location_name, \
                 plays.duration_minutes, plays.notes, plays.visibility, plays.logged_by_user_id, \
-                users.username AS logged_by_username \
+                users.username AS logged_by_username, {DISPLAY_NAME_SQL} AS logged_by_display_name \
          FROM plays \
          JOIN games ON games.id = plays.game_id \
          LEFT JOIN locations ON locations.id = plays.location_id \
@@ -625,7 +785,6 @@ pub async fn edit_play_form(
         EditPlayTemplate {
             title: format!("Edit {}", play.game_name),
             username: current.username,
-            is_admin: current.is_admin,
             play,
             players,
             available_users,
@@ -901,4 +1060,39 @@ pub async fn update_play(
     }
 
     Redirect::to(&format!("/plays/{play_id}")).into_response()
+}
+
+pub async fn delete_play(
+    State(state): State<AppState>,
+    Extension(CurrentUser(current)): Extension<CurrentUser>,
+    Path(play_id): Path<i64>,
+) -> impl IntoResponse {
+    let Some((_play, can_edit)) = load_editable_play(&state, current.id, play_id).await else {
+        return (axum::http::StatusCode::NOT_FOUND, "Play not found").into_response();
+    };
+    if !can_edit {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            "Only the person who logged this play, or an approved linked player, can delete it.",
+        )
+            .into_response();
+    }
+
+    // notifications.play_id has no ON DELETE CASCADE, unlike play_players/
+    // play_photos/play_expansions, so it has to be cleared explicitly or the
+    // delete below would fail on a foreign key violation.
+    sqlx::query("DELETE FROM notifications WHERE play_id = ?")
+        .bind(play_id)
+        .execute(&state.db)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM plays WHERE id = ?")
+        .bind(play_id)
+        .execute(&state.db)
+        .await
+        .ok();
+
+    let _ = std::fs::remove_dir_all(format!("data/photos/{play_id}"));
+
+    Redirect::to("/plays").into_response()
 }

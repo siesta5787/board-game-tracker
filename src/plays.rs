@@ -47,3 +47,23 @@ pub const VISIBLE_OR_TAGGED: &str = "(
         WHERE pp2.play_id = plays.id AND p2.user_id = ? AND pp2.link_status IN ('pending', 'approved')
     )
 )";
+
+/// True if `subject_user_id` (bind the same id to both `?` placeholders, in
+/// order) is either the play's logger or an *approved* linked player on it.
+/// Combine with `VISIBLE_TO` (bound with the viewer's id) to build a "plays
+/// involving user Y that viewer X can see" query for profile pages — guests
+/// never match this since it's keyed on `players.user_id`.
+pub const INVOLVES_USER: &str = "(
+    plays.logged_by_user_id = ?
+    OR EXISTS (
+        SELECT 1 FROM play_players pp3
+        JOIN players p3 ON p3.id = pp3.player_id
+        WHERE pp3.play_id = plays.id AND p3.user_id = ? AND pp3.link_status = 'approved'
+    )
+)";
+
+/// SQL expression computing a person's display name from a `users` row
+/// already joined into the query under the alias `users`: "First Last" if
+/// either is set, otherwise their username. No `?` placeholders — usernames
+/// stay the login/URL identifier, this is purely for what's shown on screen.
+pub const DISPLAY_NAME_SQL: &str = "COALESCE(NULLIF(TRIM(COALESCE(users.first_name, '') || ' ' || COALESCE(users.last_name, '')), ''), users.username)";

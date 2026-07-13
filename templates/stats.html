@@ -33,7 +33,7 @@
             <thead><tr><th>Game</th><th>Plays</th></tr></thead>
             <tbody>
             {% for g in top_games %}
-                <tr><td>{{ g.name }}</td><td>{{ g.play_count }}</td></tr>
+                <tr><td><a href="/games/{{ g.id }}" class="inline-link">{{ g.name }}</a></td><td>{{ g.play_count }}</td></tr>
             {% endfor %}
             </tbody>
         </table>
@@ -48,7 +48,13 @@
             <tbody>
             {% for l in leaderboard %}
                 <tr>
-                    <td>{{ l.player_name }}</td>
+                    <td>
+                        {% if let Some(uname) = l.player_username %}
+                        <a href="/users/{{ uname }}" class="inline-link">{{ l.player_name }}</a>
+                        {% else %}
+                        {{ l.player_name }}
+                        {% endif %}
+                    </td>
                     <td>{{ l.play_count }}</td>
                     <td>{{ l.win_count }}</td>
                     <td>

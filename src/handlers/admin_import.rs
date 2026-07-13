@@ -12,7 +12,6 @@ use crate::security::CurrentUser;
 struct ImportFormTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     error: Option<String>,
 }
 
@@ -23,7 +22,6 @@ pub async fn import_form(
         ImportFormTemplate {
             title: "Import from BG Catalog".to_string(),
             username: current.username,
-            is_admin: current.is_admin,
             error: None,
         }
         .render()
@@ -36,7 +34,6 @@ pub async fn import_form(
 struct ImportResultTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     summary: ImportSummary,
 }
 
@@ -60,7 +57,6 @@ pub async fn run_import(
             ImportFormTemplate {
                 title: "Import from BG Catalog".to_string(),
                 username: current.username,
-                is_admin: current.is_admin,
                 error: Some("Please choose a .zip file to upload.".to_string()),
             }
             .render()
@@ -74,7 +70,6 @@ pub async fn run_import(
             ImportResultTemplate {
                 title: "Import complete".to_string(),
                 username: current.username,
-                is_admin: current.is_admin,
                 summary,
             }
             .render()
@@ -85,7 +80,6 @@ pub async fn run_import(
             ImportFormTemplate {
                 title: "Import from BG Catalog".to_string(),
                 username: current.username,
-                is_admin: current.is_admin,
                 error: Some(e),
             }
             .render()

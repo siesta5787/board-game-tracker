@@ -8,4 +8,6 @@ pub struct User {
     pub must_change_password: bool,
     pub totp_secret: Option<String>,
     pub totp_enabled: bool,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
 }

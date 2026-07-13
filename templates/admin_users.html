@@ -11,6 +11,9 @@
         {% if let Some(s) = success %}
         <div class="success">{{ s }}</div>
         {% endif %}
+        {% if let Some(e) = error %}
+        <div class="error">{{ e }}</div>
+        {% endif %}
 
         <a href="/admin/users/new" class="button">+ New user</a>
 
@@ -18,18 +21,45 @@
             <thead>
                 <tr>
                     <th>Username</th>
+                    <th>Name</th>
                     <th>Role</th>
                     <th>Status</th>
                     <th>2FA</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for u in users %}
                 <tr>
-                    <td>{{ u.username }}</td>
+                    <td><a href="/users/{{ u.username }}" class="inline-link">{{ u.username }}</a></td>
+                    <td>{{ u.display_name }}</td>
                     <td>{% if u.is_admin %}<span class="badge admin">Admin</span>{% else %}User{% endif %}</td>
-                    <td>{% if u.is_active %}Active{% else %}<span class="badge inactive">Removed</span>{% endif %}</td>
+                    <td>
+                        {% if u.is_active %}Active{% else %}<span class="badge inactive">Removed</span>{% endif %}
+                        {% if u.is_locked %}<span class="badge inactive">Locked</span>{% endif %}
+                    </td>
                     <td>{% if u.totp_enabled %}Enabled{% else %}Not set up yet{% endif %}</td>
+                    <td class="admin-actions">
+                        {% if u.is_locked %}
+                        <form method="post" action="/admin/users/{{ u.id }}/unlock">
+                            <button type="submit" class="button-small">Unlock</button>
+                        </form>
+                        {% endif %}
+                        <form method="post" action="/admin/users/{{ u.id }}/reset" onsubmit="return confirm('Reset {{ u.username }}\'s password and two-factor login? They\'ll need to set both up again.');">
+                            <button type="submit" class="button-small">Reset password/2FA</button>
+                        </form>
+                        {% if u.is_active %}
+                        {% if u.id != current_user_id %}
+                        <form method="post" action="/admin/users/{{ u.id }}/deactivate" onsubmit="return confirm('Remove {{ u.username }}? They won\'t be able to log in, but their plays and stats stay visible.');">
+                            <button type="submit" class="button-small button-danger">Remove</button>
+                        </form>
+                        {% endif %}
+                        {% else %}
+                        <form method="post" action="/admin/users/{{ u.id }}/reactivate">
+                            <button type="submit" class="button-small">Restore</button>
+                        </form>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

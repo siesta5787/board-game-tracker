@@ -6,10 +6,85 @@
 <body>
 {% include "partials/app_header.html" %}
     <main class="app-content">
-        <h1>Welcome, {{ username }}.</h1>
-        <p>This is a placeholder home page. Collection, plays, and stats will live here.</p>
-        <p><a href="/import/bgcatalog">Import your plays from BG Catalog &rarr;</a></p>
-        <p><a href="/export">Download your data (collection, plays, photos) &rarr;</a></p>
+        <div class="home-profile">
+            {% if has_photo %}
+            <img src="/users/{{ username }}/photo" alt="" class="profile-avatar">
+            {% else %}
+            <div class="profile-avatar profile-avatar-placeholder">{{ display_initial }}</div>
+            {% endif %}
+            <div>
+                <h1>{{ display_name }}</h1>
+                <p class="home-quick-stats">{{ owned_count }} games &middot; {{ total_plays }} plays &middot; {{ username }}</p>
+            </div>
+        </div>
+
+        <h2>Last plays</h2>
+        <div class="home-carousel">
+            <a href="/plays/new" class="home-action-tile">
+                <span class="home-action-icon">+</span>
+                <span>Create new play</span>
+            </a>
+            {% if let Some(rid) = repeat_play_id %}
+            <a href="/plays/new?repeat_from={{ rid }}" class="home-action-tile">
+                {% if let Some(thumb) = repeat_play_thumbnail %}
+                <img src="{{ thumb }}" alt="" class="home-action-thumb">
+                {% endif %}
+                <span>Repeat play</span>
+            </a>
+            {% endif %}
+            {% for p in recent_plays %}
+            <a href="/plays/{{ p.id }}" class="home-play-tile">
+                {% if let Some(thumb) = p.thumbnail_url %}
+                <img src="{{ thumb }}" alt="" class="home-play-thumb">
+                {% else %}
+                <div class="home-play-thumb game-thumb-placeholder"></div>
+                {% endif %}
+                {% if p.i_won %}<span class="badge admin home-play-trophy">Won</span>{% endif %}
+                <div class="home-play-name">{{ p.game_name }}</div>
+                <div class="home-play-meta">{{ p.player_count }} players &middot; {{ p.play_date }}</div>
+            </a>
+            {% endfor %}
+        </div>
+        {% if recent_plays.is_empty() %}
+        <p class="hint">No plays logged yet &mdash; log your first one above.</p>
+        {% endif %}
+
+        <h2>Game collection</h2>
+        <div class="home-collection-tiles">
+            <a href="/collection/{{ username }}?status=owned" class="home-collection-tile home-tile-blue">
+                <span class="home-tile-count">{{ owned_count }}</span>
+                <span class="home-tile-label">Owned</span>
+            </a>
+            <a href="/collection/{{ username }}?status=want_to_trade" class="home-collection-tile home-tile-green">
+                <span class="home-tile-count">{{ want_to_trade_count }}</span>
+                <span class="home-tile-label">Want to Trade</span>
+            </a>
+            <a href="/collection/{{ username }}?status=want_to_play" class="home-collection-tile home-tile-purple">
+                <span class="home-tile-count">{{ want_to_play_count }}</span>
+                <span class="home-tile-label">Want to Play</span>
+            </a>
+            <a href="/collection/{{ username }}?status=wishlist" class="home-collection-tile home-tile-pink">
+                <span class="home-tile-count">{{ wishlist_count }}</span>
+                <span class="home-tile-label">Wishlist</span>
+            </a>
+        </div>
+
+        <h2>Your stats</h2>
+        <div class="stat-tiles">
+            <div class="stat-tile">
+                <div class="stat-label">Plays logged</div>
+                <div class="stat-value">{{ total_plays }}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="stat-label">Games played</div>
+                <div class="stat-value">{{ distinct_games }}</div>
+            </div>
+            <div class="stat-tile">
+                <div class="stat-label">Win rate</div>
+                <div class="stat-value">{{ win_rate_pct }}%</div>
+            </div>
+        </div>
+        <p><a href="/stats">View full stats &rarr;</a></p>
     </main>
 </body>
 </html>

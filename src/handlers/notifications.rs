@@ -4,15 +4,18 @@ use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Redirect};
 
 use crate::AppState;
+use crate::plays::DISPLAY_NAME_SQL;
 use crate::security::CurrentUser;
 
 #[derive(sqlx::FromRow)]
 struct NotificationRow {
     id: i64,
     play_id: i64,
+    game_id: i64,
     game_name: String,
     play_date: String,
     logged_by_username: String,
+    logged_by_display_name: String,
 }
 
 #[derive(Template)]
@@ -20,7 +23,6 @@ struct NotificationRow {
 struct NotificationsTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     notifications: Vec<NotificationRow>,
 }
 
@@ -28,26 +30,26 @@ pub async fn list_notifications(
     State(state): State<AppState>,
     Extension(CurrentUser(current)): Extension<CurrentUser>,
 ) -> impl IntoResponse {
-    let notifications = sqlx::query_as::<_, NotificationRow>(
-        "SELECT notifications.id, plays.id AS play_id, games.name AS game_name, plays.play_date, \
-                users.username AS logged_by_username \
+    let sql = format!(
+        "SELECT notifications.id, plays.id AS play_id, games.id AS game_id, games.name AS game_name, plays.play_date, \
+                users.username AS logged_by_username, {DISPLAY_NAME_SQL} AS logged_by_display_name \
          FROM notifications \
          JOIN plays ON plays.id = notifications.play_id \
          JOIN games ON games.id = plays.game_id \
          JOIN users ON users.id = plays.logged_by_user_id \
          WHERE notifications.user_id = ? AND notifications.type = 'play_link_request' AND notifications.is_read = 0 \
-         ORDER BY notifications.created_at DESC",
-    )
-    .bind(current.id)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+         ORDER BY notifications.created_at DESC"
+    );
+    let notifications = sqlx::query_as::<_, NotificationRow>(&sql)
+        .bind(current.id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
 
     Html(
         NotificationsTemplate {
             title: "Notifications".to_string(),
             username: current.username,
-            is_admin: current.is_admin,
             notifications,
         }
         .render()
@@ -105,4 +107,23 @@ pub async fn decline(
 ) -> impl IntoResponse {
     respond(&state, current.id, notification_id, "declined").await;
     Redirect::to("/notifications")
+}
+
+/// Plain-text unread count, fetched client-side by the bottom nav badge —
+/// keeps the badge dynamic without threading a count through every single
+/// page's template struct.
+pub async fn unread_count(
+    State(state): State<AppState>,
+    Extension(CurrentUser(current)): Extension<CurrentUser>,
+) -> impl IntoResponse {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications \
+         WHERE user_id = ? AND type = 'play_link_request' AND is_read = 0",
+    )
+    .bind(current.id)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+
+    count.to_string()
 }

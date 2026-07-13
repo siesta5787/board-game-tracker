@@ -16,7 +16,7 @@
         {% for n in notifications %}
             <div class="game-card">
                 <div class="game-info">
-                    <h3>{{ n.logged_by_username }} tagged you in a play of {{ n.game_name }}</h3>
+                    <h3><a href="/users/{{ n.logged_by_username }}" class="inline-link">{{ n.logged_by_display_name }}</a> tagged you in a play of <a href="/games/{{ n.game_id }}" class="inline-link">{{ n.game_name }}</a></h3>
                     <p class="muted">{{ n.play_date }} &middot; <a href="/plays/{{ n.play_id }}">View play</a></p>
                     <div class="status-pills">
                         <form method="post" action="/notifications/{{ n.id }}/approve" class="pill-form">

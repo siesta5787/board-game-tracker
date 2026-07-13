@@ -6,12 +6,12 @@
 <body>
 {% include "partials/app_header.html" %}
     <main class="app-content">
-        <h1>{{ play.game_name }}</h1>
+        <h1><a href="/games/{{ play.game_id }}" class="inline-link">{{ play.game_name }}</a></h1>
         <p class="muted">
             {{ play.play_date }}
             {% if let Some(loc) = play.location_name %} &middot; {{ loc }}{% endif %}
             {% if let Some(d) = play.duration_minutes %} &middot; {{ d }} min{% endif %}
-            &middot; logged by {{ play.logged_by_username }}
+            &middot; logged by <a href="/users/{{ play.logged_by_username }}" class="inline-link">{{ play.logged_by_display_name }}</a>
             &middot; <span class="badge">{{ play.visibility }}</span>
         </p>
 
@@ -20,7 +20,12 @@
         {% endif %}
 
         {% if can_edit %}
-        <p><a href="/plays/{{ play.id }}/edit" class="button secondary">Edit play</a></p>
+        <p>
+            <a href="/plays/{{ play.id }}/edit" class="button secondary">Edit play</a>
+            <form method="post" action="/plays/{{ play.id }}/delete" style="display:inline;" onsubmit="return confirm('Delete this play? This can\'t be undone.');">
+                <button type="submit" class="button-danger">Delete play</button>
+            </form>
+        </p>
         {% endif %}
 
         {% if !photos.is_empty() %}
@@ -48,7 +53,11 @@
             {% for p in players %}
                 <tr>
                     <td>
+                        {% if let Some(uname) = p.player_username %}
+                        <a href="/users/{{ uname }}" class="inline-link">{{ p.player_name }}</a>
+                        {% else %}
                         {{ p.player_name }}
+                        {% endif %}
                         {% if p.player_user_id.is_some() %}
                             {% if p.link_status == "pending" %}<span class="badge">awaiting approval</span>{% endif %}
                             {% if p.link_status == "declined" %}<span class="badge inactive">declined</span>{% endif %}

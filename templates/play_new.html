@@ -17,18 +17,19 @@
             <select id="game_id" name="game_id" required>
                 <option value="">Choose a game&hellip;</option>
                 {% for g in games %}
-                <option value="{{ g.0 }}">{{ g.1 }}</option>
+                <option value="{{ g.0 }}" {% if let Some(pid) = prefill_game_id %}{% if *pid == g.0 %}selected{% endif %}{% endif %}>{{ g.1 }}</option>
                 {% endfor %}
             </select>
-            {% if games.is_empty() %}
-            <p class="hint">No games in the system yet. <a href="/collection/add/manual">Add one first</a>.</p>
-            {% endif %}
+            <p class="hint">
+                {% if games.is_empty() %}No games in the system yet.{% endif %}
+                Don't see it? <a href="/collection/add">Search BGG</a> or <a href="/collection/add/manual">add it manually</a>, then come back here.
+            </p>
 
             <label for="play_date">Date</label>
             <input type="date" id="play_date" name="play_date" value="{{ today }}" required>
 
             <label for="location">Location</label>
-            <input type="text" id="location" name="location" placeholder="e.g. Mike's house">
+            <input type="text" id="location" name="location" value="{{ prefill_location }}" placeholder="e.g. Mike's house">
 
             <label for="duration_minutes">Duration (minutes)</label>
             <input type="text" id="duration_minutes" name="duration_minutes" inputmode="numeric" pattern="[0-9]*">
@@ -51,18 +52,18 @@
                 <tbody>
                 {% for u in active_users %}
                     <tr>
-                        <td><input type="checkbox" name="include_user_{{ u.0 }}" value="1" style="width:auto;"></td>
-                        <td>{{ u.1 }}</td>
-                        <td><input type="text" name="score_user_{{ u.0 }}" inputmode="decimal" style="margin-bottom:0;width:90px;"></td>
-                        <td><input type="checkbox" name="winner_user_{{ u.0 }}" value="1" style="width:auto;"></td>
+                        <td><input type="checkbox" name="include_user_{{ u.id }}" value="1" style="width:auto;" {% if u.checked %}checked{% endif %}></td>
+                        <td>{{ u.username }}</td>
+                        <td><input type="text" name="score_user_{{ u.id }}" inputmode="decimal" style="margin-bottom:0;width:90px;" value="{% if let Some(s) = u.score %}{{ s }}{% endif %}"></td>
+                        <td><input type="checkbox" name="winner_user_{{ u.id }}" value="1" style="width:auto;" {% if u.is_winner %}checked{% endif %}></td>
                     </tr>
                 {% endfor %}
-                {% for i in guest_slots %}
+                {% for g in guest_slots %}
                     <tr>
                         <td></td>
-                        <td><input type="text" name="guest_name_{{ i }}" placeholder="Guest name" style="margin-bottom:0;"></td>
-                        <td><input type="text" name="guest_score_{{ i }}" inputmode="decimal" style="margin-bottom:0;width:90px;"></td>
-                        <td><input type="checkbox" name="guest_winner_{{ i }}" value="1" style="width:auto;"></td>
+                        <td><input type="text" name="guest_name_{{ g.slot }}" placeholder="Guest name" style="margin-bottom:0;" value="{{ g.name }}"></td>
+                        <td><input type="text" name="guest_score_{{ g.slot }}" inputmode="decimal" style="margin-bottom:0;width:90px;" value="{% if let Some(s) = g.score %}{{ s }}{% endif %}"></td>
+                        <td><input type="checkbox" name="guest_winner_{{ g.slot }}" value="1" style="width:auto;" {% if g.is_winner %}checked{% endif %}></td>
                     </tr>
                 {% endfor %}
                 </tbody>

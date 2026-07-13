@@ -16,6 +16,14 @@
         <form method="post" action="/admin/users/new" style="max-width:400px;">
             <label for="new_username">Username</label>
             <input type="text" id="new_username" name="username" required autofocus>
+            <p class="hint">Used to log in. Must be unique.</p>
+
+            <label for="first_name">First name</label>
+            <input type="text" id="first_name" name="first_name">
+
+            <label for="last_name">Last name</label>
+            <input type="text" id="last_name" name="last_name">
+            <p class="hint">Optional &mdash; shown to other people instead of the username, since two friends might share a real name. They can also set this themselves later.</p>
 
             <label for="temp_password">Temporary password</label>
             <input type="password" id="temp_password" name="temp_password" minlength="15" required>

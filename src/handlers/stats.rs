@@ -24,6 +24,7 @@ async fn player_id_for_user(state: &AppState, user_id: i64) -> Option<i64> {
 
 #[derive(sqlx::FromRow)]
 struct TopGameRow {
+    id: i64,
     name: String,
     play_count: i64,
 }
@@ -31,12 +32,14 @@ struct TopGameRow {
 #[derive(sqlx::FromRow)]
 struct LeaderboardRow {
     player_name: String,
+    player_username: Option<String>,
     play_count: i64,
     win_count: i64,
 }
 
 struct LeaderboardEntry {
     player_name: String,
+    player_username: Option<String>,
     play_count: i64,
     win_count: i64,
     win_rate_pct: i64,
@@ -81,7 +84,6 @@ struct MyTotalsRow {
 struct StatsTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     total_plays: i64,
     distinct_games: i64,
     win_rate_pct: i64,
@@ -126,7 +128,7 @@ pub async fn show_stats(
     };
 
     let top_games_sql = format!(
-        "SELECT games.name, COUNT(*) AS play_count \
+        "SELECT games.id, games.name, COUNT(*) AS play_count \
          FROM play_players pp \
          JOIN players p ON p.id = pp.player_id \
          JOIN plays ON plays.id = pp.play_id \
@@ -145,10 +147,11 @@ pub async fn show_stats(
         .unwrap_or_default();
 
     let leaderboard_sql = format!(
-        "SELECT p.name AS player_name, COUNT(*) AS play_count, \
+        "SELECT p.name AS player_name, users.username AS player_username, COUNT(*) AS play_count, \
                 SUM(CASE WHEN pp.is_winner THEN 1 ELSE 0 END) AS win_count \
          FROM play_players pp \
          JOIN players p ON p.id = pp.player_id \
+         LEFT JOIN users ON users.id = p.user_id \
          JOIN plays ON plays.id = pp.play_id \
          WHERE {COUNTS_TOWARD_STATS} AND {VISIBLE_TO} \
          GROUP BY p.id \
@@ -170,6 +173,7 @@ pub async fn show_stats(
             };
             LeaderboardEntry {
                 player_name: r.player_name,
+                player_username: r.player_username,
                 play_count: r.play_count,
                 win_count: r.win_count,
                 win_rate_pct,
@@ -251,7 +255,6 @@ pub async fn show_stats(
         StatsTemplate {
             title: "Stats".to_string(),
             username: current.username,
-            is_admin: current.is_admin,
             total_plays: totals.total_plays,
             distinct_games: totals.distinct_games,
             win_rate_pct,
@@ -276,11 +279,13 @@ pub struct HeadToHeadQuery {
 struct PlayerOption {
     id: i64,
     name: String,
+    username: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
 struct MatchupRow {
     play_date: String,
+    game_id: i64,
     game_name: String,
     score_a: Option<f64>,
     winner_a: bool,
@@ -293,7 +298,6 @@ struct MatchupRow {
 struct HeadToHeadTemplate {
     title: String,
     username: String,
-    is_admin: bool,
     players: Vec<PlayerOption>,
     player_a: Option<i64>,
     player_b: Option<i64>,
@@ -303,6 +307,8 @@ struct HeadToHeadTemplate {
     ties: i64,
     name_a: String,
     name_b: String,
+    username_a: Option<String>,
+    username_b: Option<String>,
 }
 
 pub async fn head_to_head(
@@ -310,10 +316,15 @@ pub async fn head_to_head(
     Extension(CurrentUser(current)): Extension<CurrentUser>,
     Query(params): Query<HeadToHeadQuery>,
 ) -> impl IntoResponse {
-    let players: Vec<PlayerOption> = sqlx::query_as("SELECT id, name FROM players ORDER BY name")
-        .fetch_all(&state.db)
-        .await
-        .unwrap_or_default();
+    let players: Vec<PlayerOption> = sqlx::query_as(
+        "SELECT players.id, players.name, users.username \
+         FROM players \
+         LEFT JOIN users ON users.id = players.user_id \
+         ORDER BY players.name",
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
 
     let mut matchups = Vec::new();
     let mut wins_a = 0i64;
@@ -321,6 +332,8 @@ pub async fn head_to_head(
     let mut ties = 0i64;
     let mut name_a = String::new();
     let mut name_b = String::new();
+    let mut username_a = None;
+    let mut username_b = None;
 
     if let (Some(a), Some(b)) = (params.player_a, params.player_b) {
         if a != b {
@@ -334,9 +347,17 @@ pub async fn head_to_head(
                 .find(|p| p.id == b)
                 .map(|p| p.name.clone())
                 .unwrap_or_default();
+            username_a = players
+                .iter()
+                .find(|p| p.id == a)
+                .and_then(|p| p.username.clone());
+            username_b = players
+                .iter()
+                .find(|p| p.id == b)
+                .and_then(|p| p.username.clone());
 
             let sql = format!(
-                "SELECT plays.play_date, games.name AS game_name, \
+                "SELECT plays.play_date, games.id AS game_id, games.name AS game_name, \
                         ppa.score AS score_a, ppa.is_winner AS winner_a, \
                         ppb.score AS score_b, ppb.is_winner AS winner_b \
                  FROM plays \
@@ -371,7 +392,6 @@ pub async fn head_to_head(
         HeadToHeadTemplate {
             title: "Head-to-head".to_string(),
             username: current.username,
-            is_admin: current.is_admin,
             players,
             player_a: params.player_a,
             player_b: params.player_b,
@@ -381,6 +401,8 @@ pub async fn head_to_head(
             ties,
             name_a,
             name_b,
+            username_a,
+            username_b,
         }
         .render()
         .unwrap(),

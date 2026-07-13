@@ -31,7 +31,11 @@
         </form>
 
         {% if !matchups.is_empty() %}
-        <h2>{{ name_a }} vs {{ name_b }}</h2>
+        <h2>
+            {% if let Some(uname) = username_a %}<a href="/users/{{ uname }}" class="inline-link">{{ name_a }}</a>{% else %}{{ name_a }}{% endif %}
+            vs
+            {% if let Some(uname) = username_b %}<a href="/users/{{ uname }}" class="inline-link">{{ name_b }}</a>{% else %}{{ name_b }}{% endif %}
+        </h2>
         <p>{{ name_a }}: {{ wins_a }} wins &middot; {{ name_b }}: {{ wins_b }} wins &middot; Ties: {{ ties }} &middot; Total plays together: {{ matchups.len() }}</p>
 
         <table>
@@ -42,7 +46,7 @@
             {% for m in matchups %}
                 <tr>
                     <td>{{ m.play_date }}</td>
-                    <td>{{ m.game_name }}</td>
+                    <td><a href="/games/{{ m.game_id }}" class="inline-link">{{ m.game_name }}</a></td>
                     <td>{% if let Some(s) = m.score_a %}{{ s }}{% endif %} {% if m.winner_a %}<span class="badge admin">W</span>{% endif %}</td>
                     <td>{% if let Some(s) = m.score_b %}{{ s }}{% endif %} {% if m.winner_b %}<span class="badge admin">W</span>{% endif %}</td>
                 </tr>

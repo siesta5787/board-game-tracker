@@ -109,6 +109,7 @@ struct RawImage {
 pub struct ImportSummary {
     pub games_created: usize,
     pub games_matched: usize,
+    pub games_added_to_collection: usize,
     pub locations_imported: usize,
     pub guest_players_created: usize,
     pub plays_imported: usize,
@@ -320,6 +321,7 @@ pub async fn import_from_zip(
 
     // Plays, defaulting to private visibility.
     let mut play_id_map: HashMap<i64, i64> = HashMap::new();
+    let mut played_game_ids: HashSet<i64> = HashSet::new();
     for pl in &export.plays {
         let Some(&new_game_id) = game_id_map.get(&pl.game_id) else {
             summary
@@ -351,8 +353,29 @@ pub async fn import_from_zip(
             Ok(new_play_id) => {
                 play_id_map.insert(pl.id, new_play_id);
                 summary.plays_imported += 1;
+                played_game_ids.insert(new_game_id);
             }
             Err(e) => summary.skipped.push(format!("Play {} failed: {e}", pl.id)),
+        }
+    }
+
+    // A game that shows up in imported play history was very likely owned
+    // by the importer, even though BG Catalog's export has no explicit
+    // "owned" flag to carry over — mark it Owned in their collection so it
+    // isn't just a name in the log-a-play dropdown. INSERT OR IGNORE respects
+    // the UNIQUE(user_id, game_id, status) constraint if it's already set.
+    for &game_id in &played_game_ids {
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO game_status (user_id, game_id, status) VALUES (?, ?, 'owned')",
+        )
+        .bind(admin_user_id)
+        .bind(game_id)
+        .execute(&state.db)
+        .await;
+        if let Ok(r) = result {
+            if r.rows_affected() > 0 {
+                summary.games_added_to_collection += 1;
+            }
         }
     }
 

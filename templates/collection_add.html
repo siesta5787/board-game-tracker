@@ -7,6 +7,7 @@
 {% include "partials/app_header.html" %}
     <main class="app-content">
         <h1>Add a game</h1>
+        <p class="hint">Games are shared across everyone &mdash; check the <a href="/games">Games list</a> first to avoid adding a duplicate.</p>
         <p><a href="/collection/add/manual">Can't find it? Add manually instead.</a></p>
 
         {% if let Some(e) = error %}

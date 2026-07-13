@@ -7,10 +7,13 @@
 {% include "partials/app_header.html" %}
     <main class="app-content">
         <h1>Add a game manually</h1>
-        <p class="hint">Use this if the game isn't on BoardGameGeek, or BGG is unreachable.</p>
+        <p class="hint">Use this if the game isn't on BoardGameGeek, or BGG is unreachable. Games are shared across everyone and names must be unique &mdash; check the <a href="/games">Games list</a> first to avoid adding a duplicate.</p>
 
         {% if let Some(e) = error %}
         <div class="error">{{ e }}</div>
+        {% endif %}
+        {% if let Some(existing) = existing_game %}
+        <p class="hint">Already in the system: <a href="/games/{{ existing.0 }}">{{ existing.1 }}</a>. Go there to add it to your collection instead.</p>
         {% endif %}
 
         <form method="post" action="/collection/add/manual" style="max-width:400px;">

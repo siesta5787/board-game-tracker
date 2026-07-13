@@ -1,13 +1,19 @@
 use askama::Template;
-use axum::extract::State;
+use axum::extract::{ConnectInfo, State};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect};
 use axum::{Extension, Form};
 use serde::Deserialize;
+use std::net::SocketAddr;
 use tower_sessions::Session;
 
 use crate::AppState;
 use crate::models::User;
 use crate::security::{self, CurrentUser};
+
+const BANNED_MESSAGE: &str =
+    "Too many failed attempts from your network. Try again in about an hour.";
+const LOCKED_MESSAGE: &str = "This account is temporarily locked after too many failed attempts. Try again in about 15 minutes.";
 
 #[derive(Template)]
 #[template(path = "login.html")]
@@ -36,8 +42,27 @@ pub struct LoginForm {
 pub async fn login(
     State(state): State<AppState>,
     session: Session,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Form(form): Form<LoginForm>,
 ) -> impl IntoResponse {
+    let ip = security::client_ip(&headers, addr);
+
+    if security::is_ip_banned(&state.db, &ip).await {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Html(
+                LoginTemplate {
+                    title: "Sign in".to_string(),
+                    error: Some(BANNED_MESSAGE.to_string()),
+                }
+                .render()
+                .unwrap(),
+            ),
+        )
+            .into_response();
+    }
+
     let user =
         sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = ? AND is_active = 1")
             .bind(&form.username)
@@ -46,12 +71,48 @@ pub async fn login(
             .ok()
             .flatten();
 
+    if let Some(u) = &user {
+        if security::is_account_locked(&state.db, u.id).await {
+            security::record_security_event(
+                &state.db,
+                "login_failed",
+                Some(&form.username),
+                Some(&ip),
+                Some("account locked"),
+            )
+            .await;
+            security::check_and_ban_ip_if_needed(&state.db, &ip).await;
+            return Html(
+                LoginTemplate {
+                    title: "Sign in".to_string(),
+                    error: Some(LOCKED_MESSAGE.to_string()),
+                }
+                .render()
+                .unwrap(),
+            )
+            .into_response();
+        }
+    }
+
     let valid = match &user {
         Some(u) => security::verify_password(&form.password, &u.password_hash),
         None => false,
     };
 
     if !valid {
+        if let Some(u) = &user {
+            security::record_failed_login(&state.db, u.id).await;
+        }
+        security::record_security_event(
+            &state.db,
+            "login_failed",
+            Some(&form.username),
+            Some(&ip),
+            None,
+        )
+        .await;
+        security::check_and_ban_ip_if_needed(&state.db, &ip).await;
+
         return Html(
             LoginTemplate {
                 title: "Sign in".to_string(),
@@ -63,7 +124,159 @@ pub async fn login(
         .into_response();
     }
 
-    session.insert("user_id", user.unwrap().id).await.ok();
+    let user = user.unwrap();
+    security::reset_failed_login(&state.db, user.id).await;
+
+    if user.totp_enabled {
+        // Password is correct, but 2FA is enrolled - hold the login in a
+        // "pending" state (deliberately NOT "user_id") until they also pass
+        // a fresh TOTP code, so every login requires both factors. The
+        // "login_success" event is logged once verify_2fa also passes.
+        session.insert("pending_2fa_user_id", user.id).await.ok();
+        Redirect::to("/auth/verify-2fa").into_response()
+    } else {
+        // Not yet enrolled in 2FA - password alone is the full login so this
+        // IS the success event; require_full_auth will route them through
+        // mandatory setup next.
+        security::record_security_event(
+            &state.db,
+            "login_success",
+            Some(&user.username),
+            Some(&ip),
+            None,
+        )
+        .await;
+        session.insert("user_id", user.id).await.ok();
+        Redirect::to("/").into_response()
+    }
+}
+
+#[derive(Template)]
+#[template(path = "verify_2fa.html")]
+struct Verify2faTemplate {
+    title: String,
+    error: Option<String>,
+}
+
+pub async fn verify_2fa_form(session: Session) -> impl IntoResponse {
+    let pending: Option<i64> = session.get("pending_2fa_user_id").await.ok().flatten();
+    if pending.is_none() {
+        return Redirect::to("/login").into_response();
+    }
+    Html(
+        Verify2faTemplate {
+            title: "Verify your code".to_string(),
+            error: None,
+        }
+        .render()
+        .unwrap(),
+    )
+    .into_response()
+}
+
+#[derive(Deserialize)]
+pub struct Verify2faForm {
+    code: String,
+}
+
+pub async fn verify_2fa(
+    State(state): State<AppState>,
+    session: Session,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Form(form): Form<Verify2faForm>,
+) -> impl IntoResponse {
+    let ip = security::client_ip(&headers, addr);
+
+    if security::is_ip_banned(&state.db, &ip).await {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Html(
+                Verify2faTemplate {
+                    title: "Verify your code".to_string(),
+                    error: Some(BANNED_MESSAGE.to_string()),
+                }
+                .render()
+                .unwrap(),
+            ),
+        )
+            .into_response();
+    }
+
+    let Some(user_id): Option<i64> = session.get("pending_2fa_user_id").await.ok().flatten() else {
+        return Redirect::to("/login").into_response();
+    };
+
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = ? AND is_active = 1")
+        .bind(user_id)
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten();
+
+    let Some(user) = user else {
+        session.flush().await.ok();
+        return Redirect::to("/login").into_response();
+    };
+
+    if security::is_account_locked(&state.db, user.id).await {
+        session.flush().await.ok();
+        return Html(
+            LoginTemplate {
+                title: "Sign in".to_string(),
+                error: Some(LOCKED_MESSAGE.to_string()),
+            }
+            .render()
+            .unwrap(),
+        )
+        .into_response();
+    }
+
+    let Some(secret) = user.totp_secret.clone() else {
+        session.flush().await.ok();
+        return Redirect::to("/login").into_response();
+    };
+
+    let totp = security::totp_for_secret(&secret, &user.username);
+    // Copying a code from a phone's authenticator app commonly brings along
+    // a trailing space or newline, which would otherwise fail verification
+    // even though the digits are correct.
+    let valid = totp.check_current(form.code.trim()).unwrap_or(false);
+    if !valid {
+        security::record_failed_login(&state.db, user.id).await;
+        security::record_security_event(
+            &state.db,
+            "totp_failed",
+            Some(&user.username),
+            Some(&ip),
+            None,
+        )
+        .await;
+        security::check_and_ban_ip_if_needed(&state.db, &ip).await;
+
+        return Html(
+            Verify2faTemplate {
+                title: "Verify your code".to_string(),
+                error: Some("That code didn't match. Try again.".to_string()),
+            }
+            .render()
+            .unwrap(),
+        )
+        .into_response();
+    }
+
+    security::reset_failed_login(&state.db, user.id).await;
+    security::record_security_event(
+        &state.db,
+        "login_success",
+        Some(&user.username),
+        Some(&ip),
+        None,
+    )
+    .await;
+
+    session.remove::<i64>("pending_2fa_user_id").await.ok();
+    session.insert("user_id", user.id).await.ok();
     Redirect::to("/").into_response()
 }
 
@@ -203,7 +416,7 @@ pub async fn setup_2fa_verify(
     };
     let totp = security::totp_for_secret(&secret, &user.username);
 
-    let valid = totp.check_current(&form.code).unwrap_or(false);
+    let valid = totp.check_current(form.code.trim()).unwrap_or(false);
     if !valid {
         let qr_base64 = totp.get_qr_base64().expect("QR generation should not fail");
         return Html(

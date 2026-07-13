@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Merge games</h1>
+        <p class="hint">For when the same game got added twice (e.g. added manually, then again from a BGG search). Everything on the duplicate &mdash; plays, collection statuses, expansion links &mdash; moves to the game you keep, and the duplicate is permanently deleted.</p>
+
+        {% if let Some(s) = success %}
+        <div class="success">{{ s }}</div>
+        {% endif %}
+        {% if let Some(e) = error %}
+        <div class="error">{{ e }}</div>
+        {% endif %}
+
+        <form method="post" action="/admin/games/merge" style="max-width:500px;" onsubmit="return confirm('This permanently deletes the duplicate game after moving its plays and collection statuses. Continue?');">
+            <label for="canonical_id">Keep this game</label>
+            <select id="canonical_id" name="canonical_id" required>
+                <option value="">Choose&hellip;</option>
+                {% for g in games %}
+                <option value="{{ g.id }}">{{ g.name }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="duplicate_id">Merge in and delete this one</label>
+            <select id="duplicate_id" name="duplicate_id" required>
+                <option value="">Choose&hellip;</option>
+                {% for g in games %}
+                <option value="{{ g.id }}">{{ g.name }}</option>
+                {% endfor %}
+            </select>
+
+            <button type="submit" class="button-danger">Merge</button>
+        </form>
+    </main>
+</body>
+</html>

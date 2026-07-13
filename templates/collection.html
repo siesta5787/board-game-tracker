@@ -10,11 +10,18 @@
         <h1>My collection</h1>
         <p><a href="/collection/add" class="button">+ Add a game</a> <a href="/collection/add/manual" class="button secondary">Add manually</a></p>
         {% else %}
-        <h1>{{ collection_owner }}'s collection</h1>
+        <h1><a href="/users/{{ collection_owner }}" class="inline-link">{{ collection_owner_display }}</a>'s collection</h1>
         {% endif %}
 
+        <div class="filter-chip-row">
+            <a href="/collection/{{ collection_owner }}" class="filter-chip {% if status_filter.is_none() %}filter-chip-active{% endif %}">All</a>
+            {% for s in statuses %}
+            <a href="/collection/{{ collection_owner }}?status={{ s.0 }}" class="filter-chip {% if let Some(f) = status_filter %}{% if f == s.0 %}filter-chip-active{% endif %}{% endif %}">{{ s.1 }}</a>
+            {% endfor %}
+        </div>
+
         {% if entries.is_empty() %}
-        <p class="hint">No games here yet.</p>
+        <p class="hint" style="margin-top:8px;">No games here yet.</p>
         {% endif %}
 
         <div class="game-list">
@@ -26,7 +33,7 @@
                 <div class="game-thumb game-thumb-placeholder"></div>
                 {% endif %}
                 <div class="game-info">
-                    <h3>{{ entry.name }}{% if let Some(y) = entry.year_published %} <span class="muted">({{ y }})</span>{% endif %}</h3>
+                    <h3><a href="/games/{{ entry.id }}" class="inline-link">{{ entry.name }}</a>{% if let Some(y) = entry.year_published %} <span class="muted">({{ y }})</span>{% endif %}</h3>
                     <p class="muted">
                         {% if let Some(min) = entry.min_players %}{{ min }}{% if let Some(max) = entry.max_players %}–{{ max }}{% endif %} players{% endif %}
                         {% if let Some(w) = entry.weight %} &middot; weight {{ w }}{% endif %}
@@ -35,9 +42,6 @@
                     {% if is_own_collection %}
                         <form method="post" action="/collection/{{ entry.id }}/status/owned/{% if entry.is_owned %}remove{% else %}add{% endif %}" class="pill-form">
                             <button type="submit" class="pill {% if entry.is_owned %}pill-active{% endif %}">Owned</button>
-                        </form>
-                        <form method="post" action="/collection/{{ entry.id }}/status/want_to_buy/{% if entry.is_want_to_buy %}remove{% else %}add{% endif %}" class="pill-form">
-                            <button type="submit" class="pill {% if entry.is_want_to_buy %}pill-active{% endif %}">Want to Buy</button>
                         </form>
                         <form method="post" action="/collection/{{ entry.id }}/status/wishlist/{% if entry.is_wishlist %}remove{% else %}add{% endif %}" class="pill-form">
                             <button type="submit" class="pill {% if entry.is_wishlist %}pill-active{% endif %}">Wishlist</button>
@@ -48,12 +52,23 @@
                         <form method="post" action="/collection/{{ entry.id }}/status/for_sale/{% if entry.is_for_sale %}remove{% else %}add{% endif %}" class="pill-form">
                             <button type="submit" class="pill {% if entry.is_for_sale %}pill-active{% endif %}">For Sale</button>
                         </form>
+                        <form method="post" action="/collection/{{ entry.id }}/status/played/{% if entry.is_played %}remove{% else %}add{% endif %}" class="pill-form">
+                            <button type="submit" class="pill {% if entry.is_played %}pill-active{% endif %}">Played</button>
+                        </form>
+                        <form method="post" action="/collection/{{ entry.id }}/status/want_to_play/{% if entry.is_want_to_play %}remove{% else %}add{% endif %}" class="pill-form">
+                            <button type="submit" class="pill {% if entry.is_want_to_play %}pill-active{% endif %}">Want to Play</button>
+                        </form>
+                        <form method="post" action="/collection/{{ entry.id }}/status/want_to_trade/{% if entry.is_want_to_trade %}remove{% else %}add{% endif %}" class="pill-form">
+                            <button type="submit" class="pill {% if entry.is_want_to_trade %}pill-active{% endif %}">Want to Trade</button>
+                        </form>
                     {% else %}
                         {% if entry.is_owned %}<span class="pill pill-active">Owned</span>{% endif %}
-                        {% if entry.is_want_to_buy %}<span class="pill pill-active">Want to Buy</span>{% endif %}
                         {% if entry.is_wishlist %}<span class="pill pill-active">Wishlist</span>{% endif %}
                         {% if entry.is_preordered %}<span class="pill pill-active">Pre-ordered</span>{% endif %}
                         {% if entry.is_for_sale %}<span class="pill pill-active">For Sale</span>{% endif %}
+                        {% if entry.is_played %}<span class="pill pill-active">Played</span>{% endif %}
+                        {% if entry.is_want_to_play %}<span class="pill pill-active">Want to Play</span>{% endif %}
+                        {% if entry.is_want_to_trade %}<span class="pill pill-active">Want to Trade</span>{% endif %}
                     {% endif %}
                     </div>
                 </div>

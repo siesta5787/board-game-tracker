@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <div class="profile-header">
+            {% if has_photo %}
+            <img src="/users/{{ profile_username }}/photo" alt="" class="profile-avatar">
+            {% else %}
+            <div class="profile-avatar profile-avatar-placeholder">{{ profile_initial }}</div>
+            {% endif %}
+            <div>
+                {% if is_own_profile %}
+                <h1>My profile</h1>
+                {% else %}
+                <h1>{{ profile_display_name }}</h1>
+                {% endif %}
+
+                {% if is_own_profile %}
+                <form method="post" action="/profile/photo" enctype="multipart/form-data" class="profile-photo-form">
+                    <input type="file" name="photo" accept="image/*" required>
+                    <button type="submit" class="button-small">{% if has_photo %}Replace photo{% else %}Upload photo{% endif %}</button>
+                </form>
+                {% if has_photo %}
+                <form method="post" action="/profile/photo/delete" onsubmit="return confirm('Remove your profile photo?');">
+                    <button type="submit" class="button-small button-danger">Remove photo</button>
+                </form>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        {% if is_own_profile %}
+        <form method="post" action="/profile/name" class="profile-name-form">
+            <div class="form-group">
+                <label for="first_name">First name</label>
+                <input type="text" id="first_name" name="first_name" value="{{ first_name }}" placeholder="{{ username }}">
+            </div>
+            <div class="form-group">
+                <label for="last_name">Last name</label>
+                <input type="text" id="last_name" name="last_name" value="{{ last_name }}">
+            </div>
+            <button type="submit" class="button-small">Save name</button>
+        </form>
+        <p class="hint">This is shown to other people instead of your username, since two friends might share a real name. Leave both blank to just show your username.</p>
+        {% endif %}
+
+        <p><a href="/collection/{{ profile_username }}" class="button secondary">View collection</a></p>
+
+        <h2>Plays</h2>
+        {% if plays.is_empty() %}
+        <p class="hint">No plays visible to you yet.</p>
+        {% endif %}
+
+        <div class="game-list">
+        {% for p in plays %}
+            <div class="game-card play-card">
+                {% if let Some(thumb) = p.thumbnail_url %}
+                <img src="{{ thumb }}" alt="" class="game-thumb">
+                {% else %}
+                <div class="game-thumb game-thumb-placeholder"></div>
+                {% endif %}
+                <div class="game-info">
+                    <h3><a href="/games/{{ p.game_id }}" class="inline-link">{{ p.game_name }}</a></h3>
+                    <p class="muted">
+                        {{ p.play_date }}
+                        {% if let Some(loc) = p.location_name %} &middot; {{ loc }}{% endif %}
+                        &middot; logged by <a href="/users/{{ p.logged_by_username }}" class="inline-link">{{ p.logged_by_display_name }}</a>
+                    </p>
+                    <span class="badge">{{ p.visibility }}</span>
+                </div>
+                <a href="/plays/{{ p.id }}" class="card-stretched-link" aria-label="View play"></a>
+            </div>
+        {% endfor %}
+        </div>
+    </main>
+</body>
+</html>

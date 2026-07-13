@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Settings</h1>
+
+        <div class="settings-list">
+            <a href="/users/{{ username }}" class="settings-list-item">My profile</a>
+            <a href="/notifications" class="settings-list-item">
+                Notifications
+                {% if unread_notifications > 0 %}<span class="badge admin">{{ unread_notifications }}</span>{% endif %}
+            </a>
+            <a href="/import/bgcatalog" class="settings-list-item">Import from BG Catalog</a>
+            <a href="/export" class="settings-list-item">Export my data</a>
+            {% if is_admin %}
+            <a href="/admin/users" class="settings-list-item">Admin</a>
+            <a href="/admin/security" class="settings-list-item">Security</a>
+            {% endif %}
+        </div>
+
+        <p class="hint">Logged in as {{ username }}</p>
+        <form method="post" action="/logout">
+            <button type="submit" class="secondary">Log out</button>
+        </form>
+    </main>
+</body>
+</html>
