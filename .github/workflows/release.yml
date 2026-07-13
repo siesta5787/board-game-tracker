@@ -1,9 +1,11 @@
 name: Release
 
-# Builds a static Raspberry Pi binary for both 64-bit (Pi 3/4/5/Zero 2 W) and
-# 32-bit (older Pi models) whenever a version tag is pushed, and attaches
-# both as a GitHub Release. `install.sh` / `update.sh` pick the right one
-# automatically based on the Pi's architecture.
+# Builds a static 64-bit Raspberry Pi binary (Pi 3/4/5/Zero 2 W) whenever a
+# version tag is pushed, and attaches it as a GitHub Release. `install.sh` /
+# `update.sh` download it automatically.
+#
+# 32-bit (armv7) support was dropped since no target hardware needs it; the
+# old two-target matrix is still in git history if it's ever needed again.
 
 on:
   push:
@@ -18,7 +20,6 @@ jobs:
       matrix:
         target:
           - aarch64-unknown-linux-musl
-          - armv7-unknown-linux-musleabihf
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

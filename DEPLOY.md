@@ -1,11 +1,11 @@
 # Deploying to a Raspberry Pi
 
-These steps get Board Game Tracker running on a Raspberry Pi (tested target: Pi Zero 2 W, 64-bit — but works on any Pi that can run 64-bit or 32-bit Raspberry Pi OS).
+These steps get Board Game Tracker running on a Raspberry Pi (tested target: Pi Zero 2 W, 64-bit). Only 64-bit Raspberry Pi OS is supported — the installer will error out clearly on a 32-bit install.
 
 ## 1. Flash the SD card
 
 1. Download [Raspberry Pi Imager](https://www.raspberrypi.com/software/) on your computer.
-2. Pick your Pi model, then choose **Raspberry Pi OS Lite (64-bit)** as the OS (or the 32-bit version if your Pi is older/32-bit only).
+2. Pick your Pi model, then choose **Raspberry Pi OS Lite (64-bit)** as the OS.
 3. Click the gear icon (⚙) before writing — this is the important part. Set:
    - A hostname (e.g. `boardgames`)
    - Enable SSH, with a username and password (or your SSH key)
@@ -23,7 +23,7 @@ ssh username@boardgames.local
 Then run the installer:
 
 ```
-curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/main/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master/deploy/install.sh | sudo bash
 ```
 
 This downloads the right binary for your Pi automatically, sets it up as a background service that starts on boot, and prints an admin username/password at the end — **save that password**, you'll need it to log in the first time (and you'll be asked to change it and set up two-factor login immediately after).
@@ -51,7 +51,7 @@ The app is now running, but only reachable from the Pi itself (`127.0.0.1:3000`)
 Whenever a new version is released, SSH into the Pi and run:
 
 ```
-curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/main/deploy/update.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master/deploy/update.sh | sudo bash
 ```
 
 This replaces the app with the latest version and restarts it. Your database, collection, plays, and photos are never touched.

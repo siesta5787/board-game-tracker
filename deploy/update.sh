@@ -4,7 +4,7 @@
 # photos). Database migrations run automatically on the next startup.
 #
 # Usage (as root, e.g. via sudo):
-#   curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/main/deploy/update.sh | sudo bash
+#   curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master/deploy/update.sh | sudo bash
 
 set -euo pipefail
 
@@ -25,7 +25,6 @@ fi
 
 case "$(uname -m)" in
     aarch64) TARGET="aarch64-unknown-linux-musl" ;;
-    armv7l) TARGET="armv7-unknown-linux-musleabihf" ;;
     *)
         echo "Unsupported architecture: $(uname -m)" >&2
         exit 1

@@ -2,7 +2,7 @@
 # Board Game Tracker — installer for Raspberry Pi (or any Linux/systemd box).
 #
 # Usage (as root, e.g. via sudo):
-#   curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/main/deploy/install.sh | sudo bash
+#   curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master/deploy/install.sh | sudo bash
 #
 # Safe to re-run: it won't overwrite an existing .env or database, it just
 # re-installs the binary/service (useful for re-running after a failure).
@@ -20,10 +20,10 @@ fi
 
 case "$(uname -m)" in
     aarch64) TARGET="aarch64-unknown-linux-musl" ;;
-    armv7l) TARGET="armv7-unknown-linux-musleabihf" ;;
     *)
         echo "Unsupported architecture: $(uname -m)" >&2
-        echo "This installer supports 64-bit (aarch64) and 32-bit ARMv7 Raspberry Pi OS only." >&2
+        echo "This installer supports 64-bit (aarch64) Raspberry Pi OS only." >&2
+        echo "Make sure you flashed the 64-bit version of Raspberry Pi OS." >&2
         exit 1
         ;;
 esac
