@@ -50,7 +50,10 @@ mkdir -p "$INSTALL_DIR/data/photos"
 
 if [ ! -f "$INSTALL_DIR/.env" ]; then
     echo "No existing .env found — generating one with a fresh admin password."
-    ADMIN_PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)"
+    # `head -c 24` exiting early sends tr a SIGPIPE, which pipefail treats as
+    # a pipeline failure and would abort the whole script under set -e — the
+    # password itself is still captured correctly, so just swallow that.
+    ADMIN_PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24 || true)"
     cat >"$INSTALL_DIR/.env" <<EOF
 DATABASE_URL=sqlite://data/boardgames.db
 BIND_ADDR=127.0.0.1:3000
