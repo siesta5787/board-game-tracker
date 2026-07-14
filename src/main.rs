@@ -38,6 +38,7 @@ pub const APP_VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 async fn main() {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
+    tracing::info!("Board Game Tracker {APP_VERSION} starting");
 
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://data/boardgames.db".into());
