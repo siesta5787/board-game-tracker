@@ -2,3 +2,4 @@
 /data/
 .env
 .claude/
+/APP_VERSION_FILE

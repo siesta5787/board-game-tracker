@@ -32,8 +32,12 @@ jobs:
         with:
           tool: cross
 
-      - name: Set version from tag
-        run: echo "APP_VERSION=${{ github.ref_name }}" >> "$GITHUB_ENV"
+      - name: Stamp version from tag
+        # Written into the checked-out source tree (not just a host env var)
+        # so cross's Docker build container sees it too — cross copies the
+        # whole project in to compile it, so a file here always makes it
+        # through, unlike env-var passthrough which turned out not to.
+        run: echo -n "${{ github.ref_name }}" > APP_VERSION_FILE
 
       - name: Build (${{ matrix.target }})
         run: cross build --release --locked --target ${{ matrix.target }}

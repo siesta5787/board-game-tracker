@@ -25,13 +25,10 @@ pub struct AppState {
     pub db: SqlitePool,
 }
 
-/// Stamped in by the release workflow from the git tag that triggered the
-/// build (see .github/workflows/release.yml + Cross.toml's env passthrough);
-/// local dev builds just show "dev" since there's no tag to stamp.
-pub const APP_VERSION: &str = match option_env!("APP_VERSION") {
-    Some(v) => v,
-    None => "dev",
-};
+/// Stamped in by build.rs from APP_VERSION_FILE, which the release workflow
+/// writes into the checked-out source tree (as the git tag) before building.
+/// Local dev builds just show "dev" since that file never exists outside CI.
+pub const APP_VERSION: &str = env!("APP_VERSION");
 
 #[tokio::main]
 async fn main() {
