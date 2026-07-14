@@ -97,7 +97,12 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now board-game-tracker
+systemctl enable board-game-tracker
+# `enable --now` only *starts* the unit, which is a no-op if it's already
+# running — meaning re-running this installer to pick up a new release
+# would silently keep the old binary running forever. Restart explicitly so
+# this works the same whether this is a fresh install or a re-run.
+systemctl restart board-game-tracker
 
 echo "Installing the update watcher..."
 # A separate, root-owned component that does the actual update/restart work.
