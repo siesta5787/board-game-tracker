@@ -148,6 +148,19 @@ async fn main() {
             "/admin/games/merge",
             get(handlers::games::merge_games_form).post(handlers::games::merge_games),
         )
+        .route("/admin/backups", get(handlers::backups::list_backups))
+        .route(
+            "/admin/backups/create",
+            post(handlers::backups::create_backup),
+        )
+        .route(
+            "/admin/backups/{filename}/download",
+            get(handlers::backups::download_backup),
+        )
+        .route(
+            "/admin/backups/{filename}/delete",
+            post(handlers::backups::delete_backup),
+        )
         .layer(from_fn(security::require_admin));
 
     // Any fully-onboarded user can import their own BG Catalog history into

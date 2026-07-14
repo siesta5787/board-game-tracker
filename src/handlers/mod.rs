@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod admin_import;
 pub mod auth;
+pub mod backups;
 pub mod collection;
 pub mod dashboard;
 pub mod export;

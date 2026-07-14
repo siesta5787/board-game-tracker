@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Backups</h1>
+
+        {% if let Some(s) = success %}
+        <div class="success">{{ s }}</div>
+        {% endif %}
+        {% if let Some(e) = error %}
+        <div class="error">{{ e }}</div>
+        {% endif %}
+
+        <p class="hint">A backup is a snapshot of the whole database plus every play photo, zipped into one file. Download a copy somewhere off the Pi's SD card every so often.</p>
+
+        <form method="post" action="/admin/backups/create">
+            <button type="submit" class="button">Create backup now</button>
+        </form>
+
+        {% if backups.is_empty() %}
+        <p class="hint" style="margin-top:8px;">No backups yet.</p>
+        {% else %}
+        <table>
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Size</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in backups %}
+                <tr>
+                    <td>{{ b.filename }}</td>
+                    <td>{{ b.size_display }}</td>
+                    <td>{{ b.created_display }}</td>
+                    <td class="admin-actions">
+                        <a href="/admin/backups/{{ b.filename }}/download" class="button-small">Download</a>
+                        <form method="post" action="/admin/backups/{{ b.filename }}/delete" onsubmit="return confirm('Delete this backup? This can\'t be undone.');">
+                            <button type="submit" class="button-small button-danger">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </main>
+</body>
+</html>
