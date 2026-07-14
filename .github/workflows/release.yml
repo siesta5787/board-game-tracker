@@ -32,6 +32,9 @@ jobs:
         with:
           tool: cross
 
+      - name: Set version from tag
+        run: echo "APP_VERSION=${{ github.ref_name }}" >> "$GITHUB_ENV"
+
       - name: Build (${{ matrix.target }})
         run: cross build --release --locked --target ${{ matrix.target }}
 

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Software update</h1>
+
+        {% if let Some(m) = message %}
+        <div class="success">{{ m }}</div>
+        {% endif %}
+
+        <p class="hint" style="margin-top:8px;">Running version: <strong>{{ current_version }}</strong></p>
+
+        {% if check_failed %}
+        <p class="hint">Couldn't check GitHub for the latest version right now.</p>
+        {% else %}
+            {% if let Some(latest) = latest_version %}
+                {% if update_available %}
+                <div class="success">A new version is available: {{ latest }}</div>
+                {% else %}
+                <p class="hint">You're up to date.</p>
+                {% endif %}
+            {% endif %}
+        {% endif %}
+
+        <form method="post" action="/admin/update/trigger" onsubmit="return confirm('Download and install the latest version? The app will restart automatically — this can take about a minute.');">
+            <button type="submit" class="button">Update now</button>
+        </form>
+
+        <form method="post" action="/admin/update/restart" onsubmit="return confirm('Restart the app now?');" style="margin-top:8px;">
+            <button type="submit" class="button secondary">Restart app</button>
+        </form>
+    </main>
+</body>
+</html>

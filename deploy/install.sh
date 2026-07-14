@@ -99,6 +99,67 @@ EOF
 systemctl daemon-reload
 systemctl enable --now board-game-tracker
 
+echo "Installing the update watcher..."
+# A separate, root-owned component that does the actual update/restart work.
+# board_game_tracker itself runs unprivileged and can only ever drop a flag
+# file in its own data/ folder asking for "update" or "restart" — it can
+# never reach or modify anything in this directory, even if fully
+# compromised, since it lives outside $INSTALL_DIR entirely and nothing here
+# is boardgame-writable.
+UPDATER_DIR="/opt/board-game-tracker-updater"
+mkdir -p "$UPDATER_DIR"
+cat >"$UPDATER_DIR/watcher.sh" <<'WATCHER_EOF'
+#!/usr/bin/env bash
+# Runs as root, triggered only when board-game-tracker (unprivileged) drops
+# a flag file asking for an update or restart.
+set -euo pipefail
+
+FLAG_FILE="/opt/board-game-tracker/data/update_requested"
+REPO="siesta5787/board-game-tracker"
+
+ACTION="$(cat "$FLAG_FILE" 2>/dev/null || true)"
+rm -f "$FLAG_FILE"
+
+case "$ACTION" in
+    update)
+        curl -sSL "https://raw.githubusercontent.com/$REPO/master/deploy/update.sh" | bash
+        ;;
+    restart)
+        systemctl restart board-game-tracker
+        ;;
+    *)
+        echo "Unknown or empty update-request action: '$ACTION'" >&2
+        exit 1
+        ;;
+esac
+WATCHER_EOF
+chown -R root:root "$UPDATER_DIR"
+chmod 700 "$UPDATER_DIR"
+chmod 700 "$UPDATER_DIR/watcher.sh"
+
+cat >/etc/systemd/system/board-game-tracker-updater.path <<'PATH_EOF'
+[Unit]
+Description=Watch for Board Game Tracker update/restart requests
+
+[Path]
+PathExists=/opt/board-game-tracker/data/update_requested
+
+[Install]
+WantedBy=multi-user.target
+PATH_EOF
+
+cat >/etc/systemd/system/board-game-tracker-updater.service <<'SERVICE_EOF'
+[Unit]
+Description=Handle a pending Board Game Tracker update/restart request
+
+[Service]
+Type=oneshot
+ExecStart=/opt/board-game-tracker-updater/watcher.sh
+SERVICE_EOF
+
+systemctl daemon-reload
+systemctl enable --now board-game-tracker-updater.path
+
 echo ""
 echo "=========================================="
 echo " Board Game Tracker is installed and running."
@@ -118,5 +179,9 @@ fi
 echo "This only listens on the Pi itself (127.0.0.1) for security. To reach it"
 echo "from your phone or other devices, set up Tailscale Funnel next — see"
 echo "DEPLOY.md for that step."
+echo ""
+echo "Future updates, backups, and restarts can all be done from the app's"
+echo "Settings > Admin pages once logged in — you shouldn't need to SSH back"
+echo "in for routine maintenance after this."
 echo ""
 echo "Check status any time with: systemctl status board-game-tracker"

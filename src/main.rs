@@ -25,6 +25,14 @@ pub struct AppState {
     pub db: SqlitePool,
 }
 
+/// Stamped in by the release workflow from the git tag that triggered the
+/// build (see .github/workflows/release.yml + Cross.toml's env passthrough);
+/// local dev builds just show "dev" since there's no tag to stamp.
+pub const APP_VERSION: &str = match option_env!("APP_VERSION") {
+    Some(v) => v,
+    None => "dev",
+};
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -160,6 +168,18 @@ async fn main() {
         .route(
             "/admin/backups/{filename}/delete",
             post(handlers::backups::delete_backup),
+        )
+        .route(
+            "/admin/update",
+            get(handlers::system_update::show_update_page),
+        )
+        .route(
+            "/admin/update/trigger",
+            post(handlers::system_update::trigger_update),
+        )
+        .route(
+            "/admin/update/restart",
+            post(handlers::system_update::trigger_restart),
         )
         .layer(from_fn(security::require_admin));
 
