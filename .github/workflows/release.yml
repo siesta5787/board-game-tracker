@@ -24,6 +24,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify Cargo.toml version matches the tag
+        # The app reports its own version via CARGO_PKG_VERSION (Cargo always
+        # sets this — no custom env/file plumbing needed, unlike two earlier
+        # attempts that both turned out not to reliably reach the compiler
+        # inside cross's Docker build container). That means Cargo.toml has
+        # to be bumped by hand alongside each tag; fail loudly here instead
+        # of silently shipping a binary whose self-reported version is wrong.
+        run: |
+          set -euo pipefail
+          CARGO_VERSION="v$(grep -m1 '^version' Cargo.toml | sed -E 's/version = "(.*)"/\1/')"
+          if [ "$CARGO_VERSION" != "${{ github.ref_name }}" ]; then
+            echo "Cargo.toml version ($CARGO_VERSION) doesn't match tag (${{ github.ref_name }})" >&2
+            exit 1
+          fi
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -31,13 +46,6 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cross
-
-      - name: Stamp version from tag
-        # Written into the checked-out source tree (not just a host env var)
-        # so cross's Docker build container sees it too — cross copies the
-        # whole project in to compile it, so a file here always makes it
-        # through, unlike env-var passthrough which turned out not to.
-        run: echo -n "${{ github.ref_name }}" > APP_VERSION_FILE
 
       - name: Build (${{ matrix.target }})
         run: cross build --release --locked --target ${{ matrix.target }}

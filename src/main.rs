@@ -25,10 +25,14 @@ pub struct AppState {
     pub db: SqlitePool,
 }
 
-/// Stamped in by build.rs from APP_VERSION_FILE, which the release workflow
-/// writes into the checked-out source tree (as the git tag) before building.
-/// Local dev builds just show "dev" since that file never exists outside CI.
-pub const APP_VERSION: &str = env!("APP_VERSION");
+/// Mirrors Cargo.toml's `version` field (prefixed with "v" to match the git
+/// tag format, e.g. "v0.3.0") — bump Cargo.toml alongside each release tag
+/// so this stays in sync. Cargo always sets CARGO_PKG_VERSION itself, so
+/// this needs no custom build-time plumbing (unlike two earlier attempts —
+/// an env-var passthrough into cross's Docker build container, then a
+/// generated file — that both turned out not to reliably reach the
+/// compiler inside that container).
+pub const APP_VERSION: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 
 #[tokio::main]
 async fn main() {
