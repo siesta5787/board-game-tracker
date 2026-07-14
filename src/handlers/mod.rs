@@ -11,5 +11,6 @@ pub mod photos;
 pub mod plays;
 pub mod settings;
 pub mod stats;
+pub mod system_maintenance;
 pub mod system_update;
 pub mod users;

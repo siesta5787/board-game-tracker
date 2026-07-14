@@ -26,9 +26,11 @@
             {% endif %}
         {% endif %}
 
+        {% if update_available || check_failed %}
         <form method="post" action="/admin/update/trigger" onsubmit="return confirm('Download and install the latest version? The app will restart automatically — this can take about a minute.');">
             <button type="submit" class="button">Update now</button>
         </form>
+        {% endif %}
 
         <form method="post" action="/admin/update/restart" onsubmit="return confirm('Restart the app now?');" style="margin-top:8px;">
             <button type="submit" class="button secondary">Restart app</button>

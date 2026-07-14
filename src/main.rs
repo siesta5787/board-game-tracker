@@ -101,6 +101,9 @@ async fn main() {
 
     let state = AppState { db };
 
+    tokio::task::spawn(handlers::backups::run_scheduled_backups(state.clone()));
+    tokio::task::spawn(handlers::backups::run_live_mirror(state.clone()));
+
     // Reachable without being logged in at all. /auth/verify-2fa belongs here
     // (not under require_session) because at that point the user only has a
     // "pending_2fa_user_id" - they aren't logged in yet by require_session's
@@ -172,6 +175,14 @@ async fn main() {
             post(handlers::backups::delete_backup),
         )
         .route(
+            "/admin/backups/schedule",
+            post(handlers::backups::save_backup_schedule),
+        )
+        .route(
+            "/admin/backups/format-drive",
+            post(handlers::backups::format_drive),
+        )
+        .route(
             "/admin/update",
             get(handlers::system_update::show_update_page),
         )
@@ -182,6 +193,30 @@ async fn main() {
         .route(
             "/admin/update/restart",
             post(handlers::system_update::trigger_restart),
+        )
+        .route(
+            "/admin/system",
+            get(handlers::system_maintenance::show_system_page),
+        )
+        .route(
+            "/admin/system/os/check",
+            post(handlers::system_maintenance::trigger_os_check),
+        )
+        .route(
+            "/admin/system/os/upgrade",
+            post(handlers::system_maintenance::trigger_os_upgrade),
+        )
+        .route(
+            "/admin/system/tailscale/update",
+            post(handlers::system_maintenance::trigger_tailscale_update),
+        )
+        .route(
+            "/admin/system/reboot",
+            post(handlers::system_maintenance::trigger_reboot),
+        )
+        .route(
+            "/admin/system/schedule",
+            post(handlers::system_maintenance::save_schedule),
         )
         .layer(from_fn(security::require_admin));
 

@@ -48,13 +48,19 @@ The app is now running, but only reachable from the Pi itself (`127.0.0.1:3000`)
 
 ## Updating later
 
-Whenever a new version is released, SSH into the Pi and run:
+Once installed, updates normally don't need SSH at all — log in as an admin and go to **Settings > Admin > Software update**, which checks GitHub for a newer release and updates + restarts the app with one click.
+
+The one exception: if a release adds new system-level components (a new systemd unit, for example), you'll need to re-run the installer once over SSH to pick that up:
 
 ```
-curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master/deploy/update.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master/deploy/install.sh | sudo bash
 ```
 
-This replaces the app with the latest version and restarts it. Your database, collection, plays, and photos are never touched.
+It's safe to re-run any time — it never touches your existing `.env` or database.
+
+## System updates (OS + Tailscale)
+
+**Settings > Admin > System updates** shows pending Raspberry Pi OS package updates and Tailscale's version, with buttons to install updates, update Tailscale, or reboot (if a reboot is needed) — no SSH required. You can also set a schedule (daily/weekly/monthly, at a chosen time) to check automatically, and optionally auto-install and auto-reboot.
 
 ## Useful commands on the Pi
 
@@ -64,4 +70,29 @@ This replaces the app with the latest version and restarts it. Your database, co
 
 ## Backups
 
-Everything the app stores lives in `/opt/board-game-tracker/data/` (the SQLite database and play photos). Back up that one folder and you have everything. A simple approach: a cron job that copies it somewhere off the SD card periodically — SD cards are the least reliable part of a Pi setup.
+**Settings > Admin > Backups** has two independent layers of protection:
+
+- **Named snapshots**: create, download, and delete backups (a full database snapshot plus all play photos, zipped) on demand or on a schedule (daily/weekly/monthly), with automatic pruning of old ones. Download a copy somewhere off the Pi's SD card every so often — SD cards are the least reliable part of a Pi setup.
+- **Continuous mirror**: a separate toggle that keeps a live, always-current copy of the database + photos refreshed every 1-2 minutes. Much tighter recovery window than the scheduled snapshots, at the cost of only ever having "the latest" rather than named points in time — the two are meant to complement each other, not replace one another.
+
+Both can copy to the same external USB drive (into separate `snapshots/` and `live/` folders), protecting against SD card failure, not just accidental data loss.
+
+### Setting up an external drive
+
+Plug a USB drive into the Pi, go to **Settings > Admin > Backups**, and use the **Format drive** button in the "External drive" section — it only ever lists drives the kernel reports as removable (never the Pi's own SD card), shows the exact device and size, and requires typing the drive's size to confirm before doing anything, since formatting is irreversible. It formats as ext4, mounts it at `/mnt/board-game-backup`, and adds it to `/etc/fstab` so it survives reboots — no SSH needed.
+
+If you'd rather do this manually over SSH instead (e.g. the drive isn't showing up as removable), the mount point the app expects is `/mnt/board-game-backup`:
+
+```
+lsblk                                  # find your drive, e.g. sda
+sudo mkfs.ext4 /dev/sda                # erases the drive
+sudo blkid /dev/sda                    # note the UUID
+sudo mkdir -p /mnt/board-game-backup
+```
+
+Add a line to `/etc/fstab`:
+```
+UUID=xxxx-xxxx-xxxx  /mnt/board-game-backup  ext4  defaults,nofail  0  2
+```
+
+Then `sudo mount -a`. Either way, once it's mounted at that path, enable "copy backups to the external drive" and/or "continuously mirror" in the app — the page shows whether the drive is currently detected as connected, and no further SSH is needed after this one-time setup.

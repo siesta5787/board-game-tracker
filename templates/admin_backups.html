@@ -50,6 +50,64 @@
             </tbody>
         </table>
         {% endif %}
+
+        <h3 style="margin-top:24px;">Scheduled backups</h3>
+        <p class="hint" style="margin-top:8px;">Automatically create a backup on this schedule, and optionally keep a second copy on an external drive.</p>
+        <p class="hint">External drive at /mnt/board-game-backup: {% if external_drive_mounted %}<strong>connected</strong>{% else %}not connected{% endif %}</p>
+
+        <form method="post" action="/admin/backups/schedule" style="max-width:500px;">
+            <label for="frequency">How often</label>
+            <select id="frequency" name="frequency">
+                <option value="daily" {% if schedule.frequency == "daily" %}selected{% endif %}>Daily</option>
+                <option value="weekly" {% if schedule.frequency == "weekly" %}selected{% endif %}>Weekly</option>
+                <option value="monthly" {% if schedule.frequency == "monthly" %}selected{% endif %}>Monthly</option>
+            </select>
+
+            <label for="day_of_week">Day of week (used if weekly)</label>
+            <select id="day_of_week" name="day_of_week">
+                <option value="0" {% if schedule.day_of_week == "0" %}selected{% endif %}>Sunday</option>
+                <option value="1" {% if schedule.day_of_week == "1" %}selected{% endif %}>Monday</option>
+                <option value="2" {% if schedule.day_of_week == "2" %}selected{% endif %}>Tuesday</option>
+                <option value="3" {% if schedule.day_of_week == "3" %}selected{% endif %}>Wednesday</option>
+                <option value="4" {% if schedule.day_of_week == "4" %}selected{% endif %}>Thursday</option>
+                <option value="5" {% if schedule.day_of_week == "5" %}selected{% endif %}>Friday</option>
+                <option value="6" {% if schedule.day_of_week == "6" %}selected{% endif %}>Saturday</option>
+            </select>
+
+            <label for="day_of_month">Day of month (used if monthly, 1-28)</label>
+            <input type="number" id="day_of_month" name="day_of_month" min="1" max="28" value="{{ schedule.day_of_month }}">
+
+            <label for="backup_time">Time</label>
+            <input type="time" id="backup_time" name="backup_time" value="{{ schedule.backup_time }}">
+
+            <label for="retention_count">Keep this many backups (older ones are deleted automatically, 0 = keep all)</label>
+            <input type="number" id="retention_count" name="retention_count" min="0" max="3650" value="{{ schedule.retention_count }}">
+
+            <label><input type="checkbox" name="external_copy_enabled" value="1" style="width:auto;display:inline-block;margin-right:6px;" {% if schedule.external_copy_enabled %}checked{% endif %}> Also copy backups to the external drive at /mnt/board-game-backup, if connected</label>
+
+            <label><input type="checkbox" name="continuous_mirror_enabled" value="1" style="width:auto;display:inline-block;margin-right:6px;" {% if schedule.continuous_mirror_enabled %}checked{% endif %}> Continuously mirror live data to the external drive every 1-2 minutes (separate from the snapshots above &mdash; a much tighter recovery window, for the same external drive)</label>
+
+            <button type="submit" class="button" style="margin-top:12px;">Save schedule</button>
+        </form>
+
+        <h3 style="margin-top:24px;">External drive</h3>
+        {% if removable_drives.is_empty() %}
+        <p class="hint" style="margin-top:8px;">No removable (USB) drives detected. Plug one in, then refresh this page.</p>
+        {% else %}
+        <p class="hint" style="margin-top:8px;">Formatting erases everything on the drive and prepares it for use as the backup destination above.</p>
+        {% for d in removable_drives %}
+        <div style="border:1px solid var(--color-border); border-radius:8px; padding:12px; margin-top:8px; max-width:500px;">
+            <p><strong>{{ d.device }}</strong> &middot; {{ d.size_display }}</p>
+            <form method="post" action="/admin/backups/format-drive" onsubmit="return confirm('This permanently erases everything on {{ d.device }}. Are you absolutely sure?');">
+                <input type="hidden" name="device" value="{{ d.device }}">
+                <label for="confirm_{{ d.device }}">Type the size shown above ({{ d.size_display }}) to confirm</label>
+                <input type="text" id="confirm_{{ d.device }}" name="confirm_size" placeholder="{{ d.size_display }}">
+                <div class="error" style="margin-bottom:12px;">This cannot be undone. Everything currently on {{ d.device }} will be permanently erased.</div>
+                <button type="submit" class="button-danger">Format {{ d.device }}</button>
+            </form>
+        </div>
+        {% endfor %}
+        {% endif %}
     </main>
 </body>
 </html>
