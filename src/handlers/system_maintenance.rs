@@ -1,5 +1,7 @@
 //! OS-level and Tailscale update management, plus scheduling — parallel to
-//! (but separate from) the app's own self-update page.
+//! (but separate from) the app's own self-update logic in
+//! handlers::system_update. Both are rendered together on one combined page
+//! by handlers::updates.
 //!
 //! Read-only status checks (apt list --upgradable, tailscale version) run
 //! directly in this unprivileged process — they don't touch anything and
@@ -14,7 +16,6 @@
 //! flag-file mechanism, since that indirection exists only to let this
 //! unprivileged, internet-facing process request privileged actions.
 
-use askama::Template;
 use axum::Extension;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse};
@@ -23,6 +24,7 @@ use serde::Deserialize;
 use std::time::Duration;
 
 use crate::AppState;
+use crate::handlers::updates;
 use crate::models::User;
 use crate::security::{self, CurrentUser};
 
@@ -99,14 +101,14 @@ fn reboot_required() -> bool {
 }
 
 #[derive(Default, Clone)]
-struct ScheduleConfig {
-    frequency: String,
-    day_of_week: String,
-    day_of_month: String,
-    check_time: String,
-    auto_apply_os: bool,
-    auto_apply_tailscale: bool,
-    auto_reboot: bool,
+pub(crate) struct ScheduleConfig {
+    pub(crate) frequency: String,
+    pub(crate) day_of_week: String,
+    pub(crate) day_of_month: String,
+    pub(crate) check_time: String,
+    pub(crate) auto_apply_os: bool,
+    pub(crate) auto_apply_tailscale: bool,
+    pub(crate) auto_reboot: bool,
 }
 
 impl ScheduleConfig {
@@ -158,24 +160,49 @@ impl ScheduleConfig {
             self.auto_reboot,
         )
     }
+
+    /// Plain-language readout of what's actually configured right now, same
+    /// idea as BackupScheduleConfig::summary in handlers/backups.rs.
+    fn summary(&self) -> String {
+        let when = match self.frequency.as_str() {
+            "weekly" => format!(
+                "every {} at {}",
+                crate::handlers::backups::day_of_week_name(&self.day_of_week),
+                self.check_time
+            ),
+            "monthly" => format!(
+                "on day {} of the month at {}",
+                self.day_of_month, self.check_time
+            ),
+            _ => format!("daily at {}", self.check_time),
+        };
+        let os = if self.auto_apply_os { "on" } else { "off" };
+        let tailscale = if self.auto_apply_tailscale {
+            "on"
+        } else {
+            "off"
+        };
+        let reboot = if self.auto_reboot { "on" } else { "off" };
+        format!(
+            "Checking for updates {when}. Auto-install OS updates: {os}. Auto-update Tailscale: {tailscale}. Auto-reboot if needed: {reboot}."
+        )
+    }
 }
 
-#[derive(Template)]
-#[template(path = "admin_system.html")]
-struct SystemTemplate {
-    title: String,
-    username: String,
-    message: Option<String>,
-    watcher_busy: bool,
-    os_update_count: Option<usize>,
-    reboot_required: bool,
-    tailscale_current: Option<String>,
-    tailscale_upstream: Option<String>,
-    tailscale_update_available: bool,
-    schedule: ScheduleConfig,
+/// Everything the combined updates page needs to know about the OS/Tailscale
+/// side — gathered here, rendered by `handlers::updates`.
+pub(crate) struct OsUpdateData {
+    pub(crate) watcher_busy: bool,
+    pub(crate) os_update_count: Option<usize>,
+    pub(crate) reboot_required: bool,
+    pub(crate) tailscale_current: Option<String>,
+    pub(crate) tailscale_upstream: Option<String>,
+    pub(crate) tailscale_update_available: bool,
+    pub(crate) schedule: ScheduleConfig,
+    pub(crate) schedule_summary: String,
 }
 
-async fn render_system_page(current: &User, message: Option<String>) -> Html<String> {
+pub(crate) async fn gather() -> OsUpdateData {
     let busy = watcher_busy().await;
 
     // Skip calling apt/tailscale entirely while the watcher is busy — apt
@@ -203,28 +230,19 @@ async fn render_system_page(current: &User, message: Option<String>) -> Html<Str
             )
         };
 
-    Html(
-        SystemTemplate {
-            title: "System updates".to_string(),
-            username: current.username.clone(),
-            message,
-            watcher_busy: busy,
-            os_update_count,
-            reboot_required: reboot_required(),
-            tailscale_current,
-            tailscale_upstream,
-            tailscale_update_available,
-            schedule: ScheduleConfig::load().await,
-        }
-        .render()
-        .unwrap(),
-    )
-}
+    let schedule = ScheduleConfig::load().await;
+    let schedule_summary = schedule.summary();
 
-pub async fn show_system_page(
-    Extension(CurrentUser(current)): Extension<CurrentUser>,
-) -> impl IntoResponse {
-    render_system_page(&current, None).await
+    OsUpdateData {
+        watcher_busy: busy,
+        os_update_count,
+        reboot_required: reboot_required(),
+        tailscale_current,
+        tailscale_upstream,
+        tailscale_update_available,
+        schedule,
+        schedule_summary,
+    }
 }
 
 async fn request_action(
@@ -242,7 +260,7 @@ async fn request_action(
         "Couldn't write the request file — the update watcher may not be set up on this install."
             .to_string()
     };
-    render_system_page(current, Some(message)).await
+    updates::render_page(current, Some(message)).await
 }
 
 pub async fn trigger_os_check(
@@ -323,7 +341,7 @@ pub async fn save_schedule(
     if !VALID_FREQUENCIES.contains(&form.frequency.as_str()) {
         return (
             http::StatusCode::BAD_REQUEST,
-            render_system_page(&current, Some("Invalid frequency.".to_string())).await,
+            updates::render_page(&current, Some("Invalid frequency.".to_string())).await,
         )
             .into_response();
     }
@@ -362,7 +380,7 @@ pub async fn save_schedule(
         "Couldn't save the schedule.".to_string()
     };
 
-    render_system_page(&current, Some(message))
+    updates::render_page(&current, Some(message))
         .await
         .into_response()
 }

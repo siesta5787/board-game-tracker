@@ -9,8 +9,12 @@
 //! directory entirely) watches for that file and does the actual privileged
 //! work. Even a fully compromised app process can only ever *request* one of
 //! two fixed actions — it can never reach or modify the privileged side.
+//!
+//! The page this used to render on its own (`/admin/update`) now lives
+//! combined with the OS/Tailscale page at `/admin/updates` — see
+//! `handlers::updates` — so every handler below hands off to that shared
+//! renderer instead of rendering its own template.
 
-use askama::Template;
 use axum::Extension;
 use axum::extract::State;
 use axum::response::{Html, IntoResponse};
@@ -18,6 +22,7 @@ use serde::Deserialize;
 use std::time::Duration;
 
 use crate::AppState;
+use crate::handlers::updates;
 use crate::models::User;
 use crate::security::{self, CurrentUser};
 
@@ -50,12 +55,12 @@ async fn latest_release_tag() -> Option<String> {
 }
 
 #[derive(Clone)]
-struct AppUpdateScheduleConfig {
-    frequency: String,
-    day_of_week: String,
-    day_of_month: String,
-    check_time: String,
-    auto_install_enabled: bool,
+pub(crate) struct AppUpdateScheduleConfig {
+    pub(crate) frequency: String,
+    pub(crate) day_of_week: String,
+    pub(crate) day_of_month: String,
+    pub(crate) check_time: String,
+    pub(crate) auto_install_enabled: bool,
 }
 
 impl AppUpdateScheduleConfig {
@@ -101,53 +106,64 @@ impl AppUpdateScheduleConfig {
             self.auto_install_enabled,
         )
     }
+
+    /// Plain-language readout of what's actually configured right now, same
+    /// idea as BackupScheduleConfig::summary in handlers/backups.rs.
+    fn summary(&self) -> String {
+        let when = match self.frequency.as_str() {
+            "weekly" => format!(
+                "every {} at {}",
+                crate::handlers::backups::day_of_week_name(&self.day_of_week),
+                self.check_time
+            ),
+            "monthly" => format!(
+                "on day {} of the month at {}",
+                self.day_of_month, self.check_time
+            ),
+            _ => format!("daily at {}", self.check_time),
+        };
+        let auto_install = if self.auto_install_enabled {
+            "on"
+        } else {
+            "off"
+        };
+        format!("Checking for a new version {when}. Auto-install: {auto_install}.")
+    }
 }
 
-#[derive(Template)]
-#[template(path = "admin_update.html")]
-struct UpdateTemplate {
-    title: String,
-    username: String,
-    current_version: String,
-    latest_version: Option<String>,
-    update_available: bool,
-    check_failed: bool,
-    message: Option<String>,
-    watcher_version: Option<String>,
-    reinstall_hint: &'static str,
-    schedule: AppUpdateScheduleConfig,
+/// Everything the combined updates page needs to know about the app's own
+/// version/self-update state — gathered here, rendered by `handlers::updates`.
+pub(crate) struct AppUpdateData {
+    pub(crate) current_version: String,
+    pub(crate) latest_version: Option<String>,
+    pub(crate) update_available: bool,
+    pub(crate) check_failed: bool,
+    pub(crate) watcher_version: Option<String>,
+    pub(crate) reinstall_hint: &'static str,
+    pub(crate) schedule: AppUpdateScheduleConfig,
+    pub(crate) schedule_summary: String,
 }
 
-async fn render_update_page(current: &User, message: Option<String>) -> Html<String> {
+pub(crate) async fn gather() -> AppUpdateData {
     let current_version = crate::APP_VERSION.to_string();
     let latest_version = latest_release_tag().await;
     let check_failed = latest_version.is_none();
     let update_available = latest_version
         .as_deref()
         .is_some_and(|latest| latest != current_version);
+    let schedule = AppUpdateScheduleConfig::load().await;
+    let schedule_summary = schedule.summary();
 
-    Html(
-        UpdateTemplate {
-            title: "Software update".to_string(),
-            username: current.username.clone(),
-            current_version,
-            latest_version,
-            update_available,
-            check_failed,
-            message,
-            watcher_version: security::installed_watcher_version().await,
-            reinstall_hint: security::REINSTALL_HINT,
-            schedule: AppUpdateScheduleConfig::load().await,
-        }
-        .render()
-        .unwrap(),
-    )
-}
-
-pub async fn show_update_page(
-    Extension(CurrentUser(current)): Extension<CurrentUser>,
-) -> impl IntoResponse {
-    render_update_page(&current, None).await
+    AppUpdateData {
+        current_version,
+        latest_version,
+        update_available,
+        check_failed,
+        watcher_version: security::installed_watcher_version().await,
+        reinstall_hint: security::REINSTALL_HINT,
+        schedule,
+        schedule_summary,
+    }
 }
 
 async fn request_action(
@@ -165,7 +181,7 @@ async fn request_action(
         "Couldn't write the request file — the update watcher may not be set up on this install."
             .to_string()
     };
-    render_update_page(current, Some(message)).await
+    updates::render_page(current, Some(message)).await
 }
 
 pub async fn trigger_update(
@@ -251,7 +267,7 @@ pub async fn save_app_update_schedule(
         "Couldn't save the schedule.".to_string()
     };
 
-    render_update_page(&current, Some(message)).await
+    updates::render_page(&current, Some(message)).await
 }
 
 /// Background task: checks for a new app release on the configured

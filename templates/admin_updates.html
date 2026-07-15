@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>Software updates</h1>
+
+        {% if let Some(m) = message %}
+        <div class="success">{{ m }}</div>
+        {% endif %}
+
+        <h3>App version</h3>
+        <p class="hint" style="margin-top:8px;">App version: <strong>{{ app.current_version }}</strong></p>
+        {% if let Some(wv) = app.watcher_version %}
+            {% if *wv == app.current_version %}
+            <p class="hint">System helper scripts: <strong>{{ wv }}</strong></p>
+            {% else %}
+            <div class="error">System helper scripts are on <strong>{{ wv }}</strong>, but the app is on <strong>{{ app.current_version }}</strong>. Some newer admin features may not work until you re-run the installer over SSH: {{ app.reinstall_hint }}</div>
+            {% endif %}
+        {% else %}
+        <p class="hint">System helper scripts: unknown version (this looks like an older install — if a newer admin feature isn't working, re-run the installer over SSH: {{ app.reinstall_hint }})</p>
+        {% endif %}
+
+        {% if app.check_failed %}
+        <p class="hint">Couldn't check GitHub for the latest version right now.</p>
+        {% else %}
+            {% if let Some(latest) = app.latest_version %}
+                {% if app.update_available %}
+                <div class="success">A new version is available: {{ latest }}</div>
+                {% else %}
+                <p class="hint">You're up to date.</p>
+                {% endif %}
+            {% endif %}
+        {% endif %}
+
+        {% if app.update_available || app.check_failed %}
+        <form method="post" action="/admin/update/trigger" onsubmit="return confirm('Download and install the latest version? The app will restart automatically — this can take about a minute.');">
+            <button type="submit" class="button">Update now</button>
+        </form>
+        {% endif %}
+
+        <form method="post" action="/admin/update/restart" onsubmit="return confirm('Restart the app now?');" style="margin-top:8px;">
+            <button type="submit" class="button secondary">Restart app</button>
+        </form>
+
+        {% if os.watcher_busy %}
+        <div class="success" style="margin-top:24px;">An update or check is currently running in the background (this can take a long time, especially for a Pi's first OS upgrade). This page will show current status once it's done — check back later.</div>
+        {% endif %}
+
+        <h3 style="margin-top:24px;">Raspberry Pi OS</h3>
+        {% if os.watcher_busy %}
+        <p class="hint" style="margin-top:8px;">Status unavailable while an update is running.</p>
+        {% else %}
+            {% if let Some(count) = os.os_update_count %}
+                {% if *count == 0 %}
+                <p class="hint" style="margin-top:8px;">No package updates pending.</p>
+                {% else %}
+                <p class="hint" style="margin-top:8px;">{{ count }} package(s) have updates available.</p>
+                {% endif %}
+            {% else %}
+            <p class="hint" style="margin-top:8px;">Couldn't check for package updates right now.</p>
+            {% endif %}
+        {% endif %}
+        {% if os.reboot_required %}
+        <div class="error">A reboot is required to finish a previous update.</div>
+        {% endif %}
+
+        <form method="post" action="/admin/system/os/check" style="display:inline;">
+            <button type="submit" class="button-small" {% if os.watcher_busy %}disabled{% endif %}>Check for updates</button>
+        </form>
+        <form method="post" action="/admin/system/os/upgrade" style="display:inline;" onsubmit="return confirm('Install all available OS package updates now?');">
+            <button type="submit" class="button-small" {% if os.watcher_busy %}disabled{% endif %}>Install updates now</button>
+        </form>
+        {% if os.reboot_required %}
+        <form method="post" action="/admin/system/reboot" style="display:inline;" onsubmit="return confirm('Reboot the Pi now? The app will be unreachable for about a minute.');">
+            <button type="submit" class="button-small button-danger" {% if os.watcher_busy %}disabled{% endif %}>Reboot now</button>
+        </form>
+        {% endif %}
+
+        <h3 style="margin-top:24px;">Tailscale</h3>
+        {% if os.watcher_busy %}
+        <p class="hint">Status unavailable while an update is running.</p>
+        {% else %}
+            {% if let Some(cur) = os.tailscale_current %}
+            <p class="hint">Running: <strong>{{ cur }}</strong>{% if let Some(up) = os.tailscale_upstream %} &middot; latest available: <strong>{{ up }}</strong>{% endif %}</p>
+            {% if os.tailscale_update_available %}
+            <div class="success">A Tailscale update is available.</div>
+            {% else %}
+            <p class="hint">You're up to date.</p>
+            {% endif %}
+            {% else %}
+            <p class="hint">Couldn't read Tailscale's version — is it installed on this Pi?</p>
+            {% endif %}
+        {% endif %}
+
+        {% if os.tailscale_update_available %}
+        <form method="post" action="/admin/system/tailscale/update">
+            <button type="submit" class="button-small">Update Tailscale now</button>
+        </form>
+        {% endif %}
+
+        <h3 style="margin-top:24px;">Automatic app updates</h3>
+        <p class="hint" style="margin-top:8px;">Automatically check for a new app version on this schedule, and optionally install it (the app restarts on its own).</p>
+        <div class="success" style="margin-top:8px;"><strong>Currently scheduled:</strong> {{ app.schedule_summary }}</div>
+
+        <form method="post" action="/admin/update/schedule" style="max-width:500px;">
+            <label for="app_frequency">How often</label>
+            <select id="app_frequency" name="frequency">
+                <option value="daily" {% if app.schedule.frequency == "daily" %}selected{% endif %}>Daily</option>
+                <option value="weekly" {% if app.schedule.frequency == "weekly" %}selected{% endif %}>Weekly</option>
+                <option value="monthly" {% if app.schedule.frequency == "monthly" %}selected{% endif %}>Monthly</option>
+            </select>
+
+            <label for="app_day_of_week">Day of week (used if weekly)</label>
+            <select id="app_day_of_week" name="day_of_week">
+                <option value="0" {% if app.schedule.day_of_week == "0" %}selected{% endif %}>Sunday</option>
+                <option value="1" {% if app.schedule.day_of_week == "1" %}selected{% endif %}>Monday</option>
+                <option value="2" {% if app.schedule.day_of_week == "2" %}selected{% endif %}>Tuesday</option>
+                <option value="3" {% if app.schedule.day_of_week == "3" %}selected{% endif %}>Wednesday</option>
+                <option value="4" {% if app.schedule.day_of_week == "4" %}selected{% endif %}>Thursday</option>
+                <option value="5" {% if app.schedule.day_of_week == "5" %}selected{% endif %}>Friday</option>
+                <option value="6" {% if app.schedule.day_of_week == "6" %}selected{% endif %}>Saturday</option>
+            </select>
+
+            <label for="app_day_of_month">Day of month (used if monthly, 1-28)</label>
+            <input type="number" id="app_day_of_month" name="day_of_month" min="1" max="28" value="{{ app.schedule.day_of_month }}">
+
+            <label for="app_check_time">Time</label>
+            <input type="time" id="app_check_time" name="check_time" value="{{ app.schedule.check_time }}">
+
+            <p class="hint">Checks land within about 5 minutes of the scheduled time.</p>
+
+            <label><input type="checkbox" name="auto_install_enabled" value="1" style="width:auto;display:inline-block;margin-right:6px;" {% if app.schedule.auto_install_enabled %}checked{% endif %}> Automatically install new versions when found (the app restarts on its own)</label>
+
+            <button type="submit" class="button" style="margin-top:12px;">Save</button>
+        </form>
+
+        <h3 style="margin-top:24px;">Automatic OS/Tailscale checks</h3>
+        <p class="hint" style="margin-top:8px;">Automatically check for OS/Tailscale updates on this schedule, and optionally install them and reboot if needed.</p>
+        <div class="success" style="margin-top:8px;"><strong>Currently scheduled:</strong> {{ os.schedule_summary }}</div>
+
+        <form method="post" action="/admin/system/schedule" style="max-width:500px;">
+            <label for="os_frequency">How often</label>
+            <select id="os_frequency" name="frequency">
+                <option value="daily" {% if os.schedule.frequency == "daily" %}selected{% endif %}>Daily</option>
+                <option value="weekly" {% if os.schedule.frequency == "weekly" %}selected{% endif %}>Weekly</option>
+                <option value="monthly" {% if os.schedule.frequency == "monthly" %}selected{% endif %}>Monthly</option>
+            </select>
+
+            <label for="os_day_of_week">Day of week (used if weekly)</label>
+            <select id="os_day_of_week" name="day_of_week">
+                <option value="0" {% if os.schedule.day_of_week == "0" %}selected{% endif %}>Sunday</option>
+                <option value="1" {% if os.schedule.day_of_week == "1" %}selected{% endif %}>Monday</option>
+                <option value="2" {% if os.schedule.day_of_week == "2" %}selected{% endif %}>Tuesday</option>
+                <option value="3" {% if os.schedule.day_of_week == "3" %}selected{% endif %}>Wednesday</option>
+                <option value="4" {% if os.schedule.day_of_week == "4" %}selected{% endif %}>Thursday</option>
+                <option value="5" {% if os.schedule.day_of_week == "5" %}selected{% endif %}>Friday</option>
+                <option value="6" {% if os.schedule.day_of_week == "6" %}selected{% endif %}>Saturday</option>
+            </select>
+
+            <label for="os_day_of_month">Day of month (used if monthly, 1-28)</label>
+            <input type="number" id="os_day_of_month" name="day_of_month" min="1" max="28" value="{{ os.schedule.day_of_month }}">
+
+            <label for="os_check_time">Time</label>
+            <input type="time" id="os_check_time" name="check_time" value="{{ os.schedule.check_time }}">
+
+            <p class="hint">Checks land within about 10 minutes of the scheduled time.</p>
+
+            <label><input type="checkbox" name="auto_apply_os" value="1" style="width:auto;display:inline-block;margin-right:6px;" {% if os.schedule.auto_apply_os %}checked{% endif %}> Automatically install OS updates</label>
+            <label><input type="checkbox" name="auto_apply_tailscale" value="1" style="width:auto;display:inline-block;margin-right:6px;" {% if os.schedule.auto_apply_tailscale %}checked{% endif %}> Automatically update Tailscale</label>
+            <label><input type="checkbox" name="auto_reboot" value="1" style="width:auto;display:inline-block;margin-right:6px;" {% if os.schedule.auto_reboot %}checked{% endif %}> Automatically reboot if a reboot is required</label>
+
+            <button type="submit" class="button" style="margin-top:12px;">Save schedule</button>
+        </form>
+    </main>
+</body>
+</html>

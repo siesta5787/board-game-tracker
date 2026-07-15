@@ -27,7 +27,7 @@ sudo apt update && sudo apt full-upgrade -y
 sudo reboot
 ```
 
-A freshly-flashed image has never had a single package update applied, so this is often a large download and a slow first run (dozens of minutes on a Pi Zero 2 W) — much better to get it out of the way now, on a Pi with nothing else running yet, than to hit it later from the app's System updates page while you're actively using it.
+A freshly-flashed image has never had a single package update applied, so this is often a large download and a slow first run (dozens of minutes on a Pi Zero 2 W) — much better to get it out of the way now, on a Pi with nothing else running yet, than to hit it later from the app's Software updates page while you're actively using it.
 
 Once it's rebooted and reconnected, run the installer:
 
@@ -57,7 +57,7 @@ The app is now running, but only reachable from the Pi itself (`127.0.0.1:3000`)
 
 ## Updating later
 
-Once installed, updates normally don't need SSH at all — log in as an admin and go to **Settings > Admin > Software update**, which checks GitHub for a newer release and updates + restarts the app with one click.
+Once installed, updates normally don't need SSH at all — log in as an admin, go to **Settings > Admin console > Software updates**, and click "Update now," which checks GitHub for a newer release and updates + restarts the app with one click. The same page also shows pending Raspberry Pi OS package updates and Tailscale's version, with buttons to install updates, update Tailscale, or reboot (if a reboot is needed), plus separate schedules (daily/weekly/monthly, at a chosen time) for auto-checking the app version and the OS/Tailscale side, each with its own optional auto-install.
 
 The one exception: if a release adds new system-level components (a new systemd unit, for example), you'll need to re-run the installer once over SSH to pick that up:
 
@@ -67,10 +67,6 @@ curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master
 
 It's safe to re-run any time — it never touches your existing `.env` or database.
 
-## System updates (OS + Tailscale)
-
-**Settings > Admin > System updates** shows pending Raspberry Pi OS package updates and Tailscale's version, with buttons to install updates, update Tailscale, or reboot (if a reboot is needed) — no SSH required. You can also set a schedule (daily/weekly/monthly, at a chosen time) to check automatically, and optionally auto-install and auto-reboot.
-
 ## Useful commands on the Pi
 
 - Check it's running: `systemctl status board-game-tracker`
@@ -79,7 +75,7 @@ It's safe to re-run any time — it never touches your existing `.env` or databa
 
 ## Backups
 
-**Settings > Admin > Backups** has two independent layers of protection:
+**Settings > Admin console > Backup & Restore** has two independent layers of protection:
 
 - **Named snapshots**: create, download, and delete backups (a full database snapshot plus all play photos, zipped) on demand or on a schedule (daily/weekly/monthly), with automatic pruning of old ones. Download a copy somewhere off the Pi's SD card every so often — SD cards are the least reliable part of a Pi setup. The page always shows a plain-language summary of whatever schedule is currently active (e.g. "Backing up daily at 02:00, keeping the last 14"), so you don't have to remember what you configured.
 - **Continuous mirror**: a separate toggle that keeps a live, always-current copy of the database + photos refreshed every 1-2 minutes. Much tighter recovery window than the scheduled snapshots, at the cost of only ever having "the latest" rather than named points in time — the two are meant to complement each other, not replace one another.
@@ -94,7 +90,7 @@ If you have a backup that isn't in the list — downloaded earlier, or recovered
 
 ### Setting up an external drive
 
-Plug a USB drive into the Pi, go to **Settings > Admin > Backups**, and use the **Format drive** button in the "External drive" section — it only ever lists drives the kernel reports as removable (never the Pi's own SD card), shows the exact device and size, and requires typing the drive's size to confirm before doing anything, since formatting is irreversible. It formats as ext4, mounts it at `/mnt/board-game-backup`, and adds it to `/etc/fstab` so it survives reboots — no SSH needed.
+Plug a USB drive into the Pi, go to **Settings > Admin console > Backup & Restore**, and use the **Format drive** button in the "External drive" section — it only ever lists drives the kernel reports as removable (never the Pi's own SD card), shows the exact device and size, and requires typing the drive's size to confirm before doing anything, since formatting is irreversible. It formats as ext4, mounts it at `/mnt/board-game-backup`, and adds it to `/etc/fstab` so it survives reboots — no SSH needed.
 
 If you'd rather do this manually over SSH instead (e.g. the drive isn't showing up as removable), the mount point the app expects is `/mnt/board-game-backup`:
 

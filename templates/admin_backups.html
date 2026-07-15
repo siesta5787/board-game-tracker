@@ -21,8 +21,8 @@
             <button type="submit" class="button">Create backup now</button>
         </form>
 
-        <details style="margin-top:8px;">
-            <summary class="hint" style="cursor:pointer;">Upload a backup from elsewhere</summary>
+        <details style="margin-top:24px;">
+            <summary class="button secondary button-small" style="list-style:none; display:inline-block; cursor:pointer;">Upload a backup from elsewhere&hellip;</summary>
             <form method="post" action="/admin/backups/upload" enctype="multipart/form-data" style="margin-top:8px; max-width:500px;">
                 <label for="backup_file">Backup .zip file (e.g. one downloaded earlier, or recovered from an external drive)</label>
                 <input type="file" id="backup_file" name="file" accept=".zip">

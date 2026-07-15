@@ -142,7 +142,7 @@ impl BackupScheduleConfig {
     }
 }
 
-fn day_of_week_name(day_of_week: &str) -> &'static str {
+pub(crate) fn day_of_week_name(day_of_week: &str) -> &'static str {
     match day_of_week {
         "0" => "Sunday",
         "1" => "Monday",

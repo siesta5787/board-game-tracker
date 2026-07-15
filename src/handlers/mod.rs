@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod admin_console;
 pub mod admin_import;
 pub mod auth;
 pub mod backups;
@@ -13,4 +14,5 @@ pub mod settings;
 pub mod stats;
 pub mod system_maintenance;
 pub mod system_update;
+pub mod updates;
 pub mod users;

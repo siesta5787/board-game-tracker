@@ -137,6 +137,7 @@ async fn main() {
         .layer(from_fn_with_state(state.clone(), security::require_session));
 
     let admin_routes = Router::new()
+        .route("/admin/console", get(handlers::admin_console::show_console))
         .route("/admin/users", get(handlers::admin::list_users))
         .route(
             "/admin/users/new",
@@ -193,10 +194,7 @@ async fn main() {
             "/admin/backups/format-drive",
             post(handlers::backups::format_drive),
         )
-        .route(
-            "/admin/update",
-            get(handlers::system_update::show_update_page),
-        )
+        .route("/admin/updates", get(handlers::updates::show_updates_page))
         .route(
             "/admin/update/trigger",
             post(handlers::system_update::trigger_update),
@@ -208,10 +206,6 @@ async fn main() {
         .route(
             "/admin/update/schedule",
             post(handlers::system_update::save_app_update_schedule),
-        )
-        .route(
-            "/admin/system",
-            get(handlers::system_maintenance::show_system_page),
         )
         .route(
             "/admin/system/os/check",
