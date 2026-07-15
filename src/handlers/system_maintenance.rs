@@ -70,10 +70,24 @@ async fn apt_upgradable_count() -> Option<usize> {
 async fn tailscale_versions() -> Option<(String, String)> {
     let current = run("tailscale", &["version"]).await?;
     let current = current.lines().next().unwrap_or("").trim().to_string();
+
+    // `--upstream` prints the same version block as plain `tailscale
+    // version` (commit hash, long version, go version, ...) with an extra
+    // "upstream: X" field appended somewhere in it — comparing the whole
+    // blob against just current's first line always looked like an update
+    // was available, even when up to date. Pull out just that field's
+    // value via substring search rather than assuming it's on its own line,
+    // since it's unclear whether tailscale's output actually has a newline
+    // there or just a space.
     let upstream = run("tailscale", &["version", "--upstream"])
         .await
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .split("upstream:")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .unwrap_or("")
+        .to_string();
+
     if current.is_empty() {
         return None;
     }
@@ -152,6 +166,7 @@ struct SystemTemplate {
     title: String,
     username: String,
     message: Option<String>,
+    watcher_version: Option<String>,
     watcher_warning: Option<String>,
     watcher_busy: bool,
     os_update_count: Option<usize>,
@@ -195,6 +210,7 @@ async fn render_system_page(current: &User, message: Option<String>) -> Html<Str
             title: "System updates".to_string(),
             username: current.username.clone(),
             message,
+            watcher_version: security::installed_watcher_version().await,
             watcher_warning: security::watcher_version_warning().await,
             watcher_busy: busy,
             os_update_count,

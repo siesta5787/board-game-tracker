@@ -365,6 +365,22 @@ pub async fn sync_player_name(db: &sqlx::SqlitePool, user_id: i64, name: &str) {
         .ok();
 }
 
+/// Plain read of whatever version install.sh last stamped into
+/// `data/watcher_version`, with no comparison against the running app
+/// version — used to show "System helper scripts: vX.Y.Z" unconditionally,
+/// separately from the mismatch warning below.
+pub async fn installed_watcher_version() -> Option<String> {
+    let installed = tokio::fs::read_to_string("data/watcher_version")
+        .await
+        .ok()?;
+    let installed = installed.trim();
+    if installed.is_empty() {
+        None
+    } else {
+        Some(installed.to_string())
+    }
+}
+
 /// The root-side watcher/scheduler scripts are only ever refreshed by
 /// re-running install.sh — the in-app "Update now" button only swaps the
 /// app binary, never those scripts. That means the running app version and
@@ -376,10 +392,9 @@ pub async fn sync_player_name(db: &sqlx::SqlitePool, user_id: i64, name: &str) {
 /// beats a silent no-op.
 pub async fn watcher_version_warning() -> Option<String> {
     let reinstall_hint = "curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master/deploy/install.sh | sudo bash";
-    match tokio::fs::read_to_string("data/watcher_version").await {
-        Ok(installed) => {
-            let installed = installed.trim();
-            if installed.is_empty() || installed == crate::APP_VERSION {
+    match installed_watcher_version().await {
+        Some(installed) => {
+            if installed == crate::APP_VERSION {
                 None
             } else {
                 Some(format!(
@@ -390,7 +405,7 @@ pub async fn watcher_version_warning() -> Option<String> {
                 ))
             }
         }
-        Err(_) => Some(format!(
+        None => Some(format!(
             "Couldn't tell what version the system helper scripts are on (this looks like an \
              older install). If a newer feature on this page isn't working, re-run the \
              installer over SSH: {reinstall_hint}"

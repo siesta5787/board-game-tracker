@@ -16,6 +16,9 @@
         {% endif %}
 
         <p class="hint" style="margin-top:8px;">Running version: <strong>{{ current_version }}</strong></p>
+        {% if let Some(wv) = watcher_version %}
+        <p class="hint">System helper scripts: <strong>{{ wv }}</strong></p>
+        {% endif %}
 
         {% if check_failed %}
         <p class="hint">Couldn't check GitHub for the latest version right now.</p>
@@ -40,14 +43,34 @@
         </form>
 
         <h3 style="margin-top:24px;">Automatic updates</h3>
+        <p class="hint" style="margin-top:8px;">Automatically check for a new app version on this schedule, and optionally install it (the app restarts on its own).</p>
+
         <form method="post" action="/admin/update/schedule" style="max-width:500px;">
-            <label for="check_interval_hours">Check for a new version every</label>
-            <select id="check_interval_hours" name="check_interval_hours">
-                <option value="1" {% if schedule.check_interval_hours == "1" %}selected{% endif %}>1 hour</option>
-                <option value="6" {% if schedule.check_interval_hours == "6" %}selected{% endif %}>6 hours</option>
-                <option value="12" {% if schedule.check_interval_hours == "12" %}selected{% endif %}>12 hours</option>
-                <option value="24" {% if schedule.check_interval_hours == "24" %}selected{% endif %}>24 hours</option>
+            <label for="frequency">How often</label>
+            <select id="frequency" name="frequency">
+                <option value="daily" {% if schedule.frequency == "daily" %}selected{% endif %}>Daily</option>
+                <option value="weekly" {% if schedule.frequency == "weekly" %}selected{% endif %}>Weekly</option>
+                <option value="monthly" {% if schedule.frequency == "monthly" %}selected{% endif %}>Monthly</option>
             </select>
+
+            <label for="day_of_week">Day of week (used if weekly)</label>
+            <select id="day_of_week" name="day_of_week">
+                <option value="0" {% if schedule.day_of_week == "0" %}selected{% endif %}>Sunday</option>
+                <option value="1" {% if schedule.day_of_week == "1" %}selected{% endif %}>Monday</option>
+                <option value="2" {% if schedule.day_of_week == "2" %}selected{% endif %}>Tuesday</option>
+                <option value="3" {% if schedule.day_of_week == "3" %}selected{% endif %}>Wednesday</option>
+                <option value="4" {% if schedule.day_of_week == "4" %}selected{% endif %}>Thursday</option>
+                <option value="5" {% if schedule.day_of_week == "5" %}selected{% endif %}>Friday</option>
+                <option value="6" {% if schedule.day_of_week == "6" %}selected{% endif %}>Saturday</option>
+            </select>
+
+            <label for="day_of_month">Day of month (used if monthly, 1-28)</label>
+            <input type="number" id="day_of_month" name="day_of_month" min="1" max="28" value="{{ schedule.day_of_month }}">
+
+            <label for="check_time">Time</label>
+            <input type="time" id="check_time" name="check_time" value="{{ schedule.check_time }}">
+
+            <p class="hint">Checks land within about 5 minutes of the scheduled time.</p>
 
             <label><input type="checkbox" name="auto_install_enabled" value="1" style="width:auto;display:inline-block;margin-right:6px;" {% if schedule.auto_install_enabled %}checked{% endif %}> Automatically install new versions when found (the app restarts on its own)</label>
 

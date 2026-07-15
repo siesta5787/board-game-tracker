@@ -51,14 +51,20 @@ async fn latest_release_tag() -> Option<String> {
 
 #[derive(Clone)]
 struct AppUpdateScheduleConfig {
-    check_interval_hours: String,
+    frequency: String,
+    day_of_week: String,
+    day_of_month: String,
+    check_time: String,
     auto_install_enabled: bool,
 }
 
 impl AppUpdateScheduleConfig {
     fn defaults() -> Self {
         AppUpdateScheduleConfig {
-            check_interval_hours: "24".to_string(),
+            frequency: "daily".to_string(),
+            day_of_week: "0".to_string(),
+            day_of_month: "1".to_string(),
+            check_time: "04:00".to_string(),
             auto_install_enabled: false,
         }
     }
@@ -74,7 +80,10 @@ impl AppUpdateScheduleConfig {
             };
             let value = value.trim().to_string();
             match key.trim() {
-                "CHECK_INTERVAL_HOURS" => config.check_interval_hours = value,
+                "FREQUENCY" => config.frequency = value,
+                "DAY_OF_WEEK" => config.day_of_week = value,
+                "DAY_OF_MONTH" => config.day_of_month = value,
+                "CHECK_TIME" => config.check_time = value,
                 "AUTO_INSTALL_ENABLED" => config.auto_install_enabled = value == "true",
                 _ => {}
             }
@@ -84,8 +93,12 @@ impl AppUpdateScheduleConfig {
 
     fn to_file_contents(&self) -> String {
         format!(
-            "CHECK_INTERVAL_HOURS={}\nAUTO_INSTALL_ENABLED={}\n",
-            self.check_interval_hours, self.auto_install_enabled,
+            "FREQUENCY={}\nDAY_OF_WEEK={}\nDAY_OF_MONTH={}\nCHECK_TIME={}\nAUTO_INSTALL_ENABLED={}\n",
+            self.frequency,
+            self.day_of_week,
+            self.day_of_month,
+            self.check_time,
+            self.auto_install_enabled,
         )
     }
 }
@@ -100,6 +113,7 @@ struct UpdateTemplate {
     update_available: bool,
     check_failed: bool,
     message: Option<String>,
+    watcher_version: Option<String>,
     watcher_warning: Option<String>,
     schedule: AppUpdateScheduleConfig,
 }
@@ -121,6 +135,7 @@ async fn render_update_page(current: &User, message: Option<String>) -> Html<Str
             update_available,
             check_failed,
             message,
+            watcher_version: security::installed_watcher_version().await,
             watcher_warning: security::watcher_version_warning().await,
             schedule: AppUpdateScheduleConfig::load().await,
         }
@@ -184,24 +199,38 @@ pub async fn trigger_restart(
 
 #[derive(Deserialize)]
 pub struct AppUpdateScheduleForm {
-    check_interval_hours: String,
+    frequency: String,
+    day_of_week: String,
+    day_of_month: String,
+    check_time: String,
     auto_install_enabled: Option<String>,
 }
 
-const VALID_INTERVALS: [&str; 4] = ["1", "6", "12", "24"];
+const VALID_FREQUENCIES: [&str; 3] = ["daily", "weekly", "monthly"];
 
 pub async fn save_app_update_schedule(
     State(state): State<AppState>,
     Extension(CurrentUser(current)): Extension<CurrentUser>,
     axum::Form(form): axum::Form<AppUpdateScheduleForm>,
 ) -> impl IntoResponse {
-    let check_interval_hours = if VALID_INTERVALS.contains(&form.check_interval_hours.as_str()) {
-        form.check_interval_hours
+    let frequency = if VALID_FREQUENCIES.contains(&form.frequency.as_str()) {
+        form.frequency
     } else {
-        "24".to_string()
+        "daily".to_string()
     };
+    let day_of_week: i32 = form.day_of_week.trim().parse().unwrap_or(0).clamp(0, 6);
+    let day_of_month: i32 = form.day_of_month.trim().parse().unwrap_or(1).clamp(1, 28);
+    let check_time = if form.check_time.trim().is_empty() {
+        "04:00".to_string()
+    } else {
+        form.check_time.trim().to_string()
+    };
+
     let config = AppUpdateScheduleConfig {
-        check_interval_hours,
+        frequency,
+        day_of_week: day_of_week.to_string(),
+        day_of_month: day_of_month.to_string(),
+        check_time,
         auto_install_enabled: form.auto_install_enabled.is_some(),
     };
 
@@ -233,7 +262,7 @@ pub async fn save_app_update_schedule(
 /// OS-update/format-drive actions, this one has no watcher-version-skew
 /// concern to worry about.
 pub async fn run_scheduled_app_update_check(_state: AppState) {
-    let mut interval = tokio::time::interval(Duration::from_secs(15 * 60));
+    let mut interval = tokio::time::interval(Duration::from_secs(5 * 60));
     loop {
         interval.tick().await;
 
@@ -245,8 +274,8 @@ pub async fn run_scheduled_app_update_check(_state: AppState) {
             continue;
         }
 
-        let now = chrono::Local::now().to_rfc3339();
-        if tokio::fs::write(LAST_CHECK_FILE, &now).await.is_err() {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        if tokio::fs::write(LAST_CHECK_FILE, &today).await.is_err() {
             tracing::warn!("couldn't write app-update last-check marker, skipping this cycle");
             continue;
         }
@@ -261,16 +290,47 @@ pub async fn run_scheduled_app_update_check(_state: AppState) {
     }
 }
 
+/// Mirrors the same daily/weekly/monthly + time-window + once-per-day-guard
+/// logic as the backup scheduler's `is_due` in handlers/backups.rs.
 async fn is_due(schedule: &AppUpdateScheduleConfig) -> bool {
-    let Ok(hours) = schedule.check_interval_hours.trim().parse::<i64>() else {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let last_check = tokio::fs::read_to_string(LAST_CHECK_FILE)
+        .await
+        .unwrap_or_default();
+    if last_check.trim() == today {
+        return false;
+    }
+
+    use chrono::{Datelike, Timelike};
+    let now = chrono::Local::now();
+    match schedule.frequency.as_str() {
+        "weekly" => {
+            let configured: u32 = schedule.day_of_week.parse().unwrap_or(0);
+            let today_dow = now.weekday().num_days_from_sunday();
+            if today_dow != configured {
+                return false;
+            }
+        }
+        "monthly" => {
+            let configured: u32 = schedule.day_of_month.parse().unwrap_or(1);
+            if now.day() != configured {
+                return false;
+            }
+        }
+        _ => {}
+    }
+
+    let Some((hour_str, minute_str)) = schedule.check_time.split_once(':') else {
         return false;
     };
-    let Ok(last_check_str) = tokio::fs::read_to_string(LAST_CHECK_FILE).await else {
-        return true;
+    let (Ok(target_hour), Ok(target_minute)) = (
+        hour_str.trim().parse::<i64>(),
+        minute_str.trim().parse::<i64>(),
+    ) else {
+        return false;
     };
-    let Ok(last_check) = chrono::DateTime::parse_from_rfc3339(last_check_str.trim()) else {
-        return true;
-    };
-    let elapsed = chrono::Local::now().signed_duration_since(last_check);
-    elapsed >= chrono::Duration::hours(hours)
+    let target_minutes = target_hour * 60 + target_minute;
+    let now_minutes = now.hour() as i64 * 60 + now.minute() as i64;
+    let diff = now_minutes - target_minutes;
+    (0..5).contains(&diff)
 }
