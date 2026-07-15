@@ -81,10 +81,16 @@ It's safe to re-run any time — it never touches your existing `.env` or databa
 
 **Settings > Admin > Backups** has two independent layers of protection:
 
-- **Named snapshots**: create, download, and delete backups (a full database snapshot plus all play photos, zipped) on demand or on a schedule (daily/weekly/monthly), with automatic pruning of old ones. Download a copy somewhere off the Pi's SD card every so often — SD cards are the least reliable part of a Pi setup.
+- **Named snapshots**: create, download, and delete backups (a full database snapshot plus all play photos, zipped) on demand or on a schedule (daily/weekly/monthly), with automatic pruning of old ones. Download a copy somewhere off the Pi's SD card every so often — SD cards are the least reliable part of a Pi setup. The page always shows a plain-language summary of whatever schedule is currently active (e.g. "Backing up daily at 02:00, keeping the last 14"), so you don't have to remember what you configured.
 - **Continuous mirror**: a separate toggle that keeps a live, always-current copy of the database + photos refreshed every 1-2 minutes. Much tighter recovery window than the scheduled snapshots, at the cost of only ever having "the latest" rather than named points in time — the two are meant to complement each other, not replace one another.
 
 Both can copy to the same external USB drive (into separate `snapshots/` and `live/` folders), protecting against SD card failure, not just accidental data loss.
+
+### Restoring a backup
+
+Next to any backup in the list, expand **Restore…** and type the exact filename shown to confirm — this stops the app, replaces the live database and photos with that backup's contents, and restarts, no SSH required. It always keeps a raw safety copy of whatever was live immediately beforehand (in `data/backups/prerestore-<timestamp>/`), in case the wrong backup gets picked.
+
+If you have a backup that isn't in the list — downloaded earlier, or recovered from the external drive after losing the Pi's own copy — expand **Upload a backup from elsewhere** above the list, choose the .zip file, and it'll be added to the list (and can then be restored the same way as any other).
 
 ### Setting up an external drive
 

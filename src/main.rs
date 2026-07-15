@@ -170,12 +170,20 @@ async fn main() {
             post(handlers::backups::create_backup),
         )
         .route(
+            "/admin/backups/upload",
+            post(handlers::backups::upload_backup).layer(DefaultBodyLimit::max(200 * 1024 * 1024)),
+        )
+        .route(
             "/admin/backups/{filename}/download",
             get(handlers::backups::download_backup),
         )
         .route(
             "/admin/backups/{filename}/delete",
             post(handlers::backups::delete_backup),
+        )
+        .route(
+            "/admin/backups/{filename}/restore",
+            post(handlers::backups::restore_backup),
         )
         .route(
             "/admin/backups/schedule",

@@ -114,7 +114,7 @@ struct UpdateTemplate {
     check_failed: bool,
     message: Option<String>,
     watcher_version: Option<String>,
-    watcher_warning: Option<String>,
+    reinstall_hint: &'static str,
     schedule: AppUpdateScheduleConfig,
 }
 
@@ -136,7 +136,7 @@ async fn render_update_page(current: &User, message: Option<String>) -> Html<Str
             check_failed,
             message,
             watcher_version: security::installed_watcher_version().await,
-            watcher_warning: security::watcher_version_warning().await,
+            reinstall_hint: security::REINSTALL_HINT,
             schedule: AppUpdateScheduleConfig::load().await,
         }
         .render()

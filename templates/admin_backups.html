@@ -21,6 +21,15 @@
             <button type="submit" class="button">Create backup now</button>
         </form>
 
+        <details style="margin-top:8px;">
+            <summary class="hint" style="cursor:pointer;">Upload a backup from elsewhere</summary>
+            <form method="post" action="/admin/backups/upload" enctype="multipart/form-data" style="margin-top:8px; max-width:500px;">
+                <label for="backup_file">Backup .zip file (e.g. one downloaded earlier, or recovered from an external drive)</label>
+                <input type="file" id="backup_file" name="file" accept=".zip">
+                <button type="submit" class="button-small" style="margin-top:8px;">Upload</button>
+            </form>
+        </details>
+
         {% if backups.is_empty() %}
         <p class="hint" style="margin-top:8px;">No backups yet.</p>
         {% else %}
@@ -44,6 +53,15 @@
                         <form method="post" action="/admin/backups/{{ b.filename }}/delete" onsubmit="return confirm('Delete this backup? This can\'t be undone.');">
                             <button type="submit" class="button-small button-danger">Delete</button>
                         </form>
+                        <details>
+                            <summary class="button-small" style="display:inline-block; cursor:pointer;">Restore&hellip;</summary>
+                            <form method="post" action="/admin/backups/{{ b.filename }}/restore" onsubmit="return confirm('This replaces everything currently in the app with this backup. Are you absolutely sure?');" style="margin-top:8px;">
+                                <div class="error" style="margin-bottom:8px;">This stops the app, replaces the live database and photos with this backup, and restarts it. Whatever is currently live will be overwritten (a safety copy of it is kept automatically, but this still can't be casually undone).</div>
+                                <label for="confirm_{{ b.filename }}">Type the filename ({{ b.filename }}) to confirm</label>
+                                <input type="text" id="confirm_{{ b.filename }}" name="confirm_filename" placeholder="{{ b.filename }}">
+                                <button type="submit" class="button-small button-danger" style="margin-top:8px;">Restore this backup</button>
+                            </form>
+                        </details>
                     </td>
                 </tr>
                 {% endfor %}
@@ -53,6 +71,7 @@
 
         <h3 style="margin-top:24px;">Scheduled backups</h3>
         <p class="hint" style="margin-top:8px;">Automatically create a backup on this schedule, and optionally keep a second copy on an external drive.</p>
+        <div class="success" style="margin-top:8px;"><strong>Currently scheduled:</strong> {{ schedule_summary }}</div>
         <p class="hint">External drive at /mnt/board-game-backup: {% if external_drive_mounted %}<strong>connected</strong>{% else %}not connected{% endif %}</p>
 
         <form method="post" action="/admin/backups/schedule" style="max-width:500px;">

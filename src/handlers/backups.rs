@@ -102,6 +102,57 @@ impl BackupScheduleConfig {
             .ok()
             .filter(|n| *n > 0)
     }
+
+    /// Plain-language readout of what's actually configured right now —
+    /// scheduled backups run unconditionally as a background task from the
+    /// moment the app starts (there's no separate "enable scheduling"
+    /// toggle, just these settings, which default to daily/02:00/keep-14 if
+    /// this file has never been saved), so without this an admin who set it
+    /// up once has no way to check months later what it's actually doing.
+    fn summary(&self) -> String {
+        let when = match self.frequency.as_str() {
+            "weekly" => format!(
+                "every {} at {}",
+                day_of_week_name(&self.day_of_week),
+                self.backup_time
+            ),
+            "monthly" => format!(
+                "on day {} of the month at {}",
+                self.day_of_month, self.backup_time
+            ),
+            _ => format!("daily at {}", self.backup_time),
+        };
+        let retention = match self.retention_count() {
+            Some(n) => format!("keeping the last {n}"),
+            None => "keeping all of them (no automatic deletion)".to_string(),
+        };
+        let external = if self.external_copy_enabled {
+            "on"
+        } else {
+            "off"
+        };
+        let mirror = if self.continuous_mirror_enabled {
+            "on"
+        } else {
+            "off"
+        };
+        format!(
+            "Backing up {when}, {retention}. Copy to external drive: {external}. Continuous mirror: {mirror}."
+        )
+    }
+}
+
+fn day_of_week_name(day_of_week: &str) -> &'static str {
+    match day_of_week {
+        "0" => "Sunday",
+        "1" => "Monday",
+        "2" => "Tuesday",
+        "3" => "Wednesday",
+        "4" => "Thursday",
+        "5" => "Friday",
+        "6" => "Saturday",
+        _ => "Sunday",
+    }
 }
 
 async fn external_drive_mounted() -> bool {
@@ -260,6 +311,7 @@ struct BackupsTemplate {
     success: Option<String>,
     error: Option<String>,
     schedule: BackupScheduleConfig,
+    schedule_summary: String,
     external_drive_mounted: bool,
     removable_drives: Vec<RemovableDrive>,
 }
@@ -279,6 +331,10 @@ async fn render_backups(
             let Ok(meta) = entry.metadata().await else {
                 continue;
             };
+            // The filename's own timestamp (e.g. backup-20260714-140000.zip)
+            // is generated from chrono::Local::now() in perform_backup below —
+            // format this the same way (Local, not UTC) so the date shown
+            // here always matches the date in the filename next to it.
             let created_display = meta
                 .modified()
                 .ok()
@@ -286,7 +342,11 @@ async fn render_backups(
                 .and_then(|d| {
                     chrono::DateTime::<chrono::Utc>::from_timestamp(d.as_secs() as i64, 0)
                 })
-                .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
+                .map(|dt| {
+                    dt.with_timezone(&chrono::Local)
+                        .format("%Y-%m-%d %H:%M")
+                        .to_string()
+                })
                 .unwrap_or_default();
             backups.push(BackupRow {
                 filename,
@@ -297,6 +357,9 @@ async fn render_backups(
     }
     backups.sort_by(|a, b| b.filename.cmp(&a.filename));
 
+    let schedule = BackupScheduleConfig::load().await;
+    let schedule_summary = schedule.summary();
+
     Html(
         BackupsTemplate {
             title: "Backups".to_string(),
@@ -304,7 +367,8 @@ async fn render_backups(
             backups,
             success,
             error,
-            schedule: BackupScheduleConfig::load().await,
+            schedule,
+            schedule_summary,
             external_drive_mounted: external_drive_mounted().await,
             removable_drives: list_removable_drives().await,
         }
@@ -698,6 +762,158 @@ pub async fn format_drive(
         )
     } else {
         "Couldn't write the request file.".to_string()
+    };
+
+    render_backups(&current, Some(message), None)
+        .await
+        .into_response()
+}
+
+#[derive(Deserialize)]
+pub struct RestoreBackupForm {
+    confirm_filename: String,
+}
+
+/// Restores a named backup: stops the app, swaps the live database and
+/// photos for the backup's contents, and restarts — all root-side (see
+/// action_restore_backup in deploy/install.sh's actions.sh), since this
+/// process can't safely replace the very database file it has open under
+/// its own running SQLite connection. This handler's job is just the two
+/// checks that make the request safe to forward: the backup must still be
+/// in the *freshly re-listed* set of files on disk (never trust a stale
+/// page load), and the admin must type the exact filename to confirm — this
+/// discards whatever's in the live database right now, so a plain confirm()
+/// dialog (bypassable via a direct POST) isn't enough. The root side takes
+/// its own safety copy of the current data before overwriting anything, in
+/// case the wrong backup gets picked.
+pub async fn restore_backup(
+    State(state): State<AppState>,
+    Extension(CurrentUser(current)): Extension<CurrentUser>,
+    Path(filename): Path<String>,
+    axum::Form(form): axum::Form<RestoreBackupForm>,
+) -> impl IntoResponse {
+    if !is_safe_backup_filename(&filename) {
+        return (StatusCode::NOT_FOUND, "Not found").into_response();
+    }
+    let names = list_backup_filenames().await;
+    if !names.contains(&filename) {
+        return render_backups(
+            &current,
+            None,
+            Some("That backup is no longer there — nothing was restored.".to_string()),
+        )
+        .await
+        .into_response();
+    }
+    if form.confirm_filename.trim() != filename {
+        return render_backups(
+            &current,
+            None,
+            Some("Confirmation text didn't match the filename — nothing was restored.".to_string()),
+        )
+        .await
+        .into_response();
+    }
+
+    let flag_content = format!("restore_backup {filename}");
+    let message = if tokio::fs::write(FLAG_FILE, &flag_content).await.is_ok() {
+        security::record_security_event(
+            &state.db,
+            "backup_restore_triggered",
+            Some(&current.username),
+            None,
+            Some(&filename),
+        )
+        .await;
+        "Restoring now — the app will stop, swap in the backup, and restart. \
+         This can take a minute; the app will be unreachable until it's done."
+            .to_string()
+    } else {
+        "Couldn't write the request file.".to_string()
+    };
+
+    render_backups(&current, Some(message), None)
+        .await
+        .into_response()
+}
+
+/// Accepts an uploaded backup zip — e.g. one downloaded earlier and saved
+/// elsewhere, or recovered from the external drive after this Pi's own copy
+/// was lost — and adds it to the list above so it can be restored like any
+/// other backup. Never trusts the browser-supplied filename or the .zip
+/// extension alone: the archive is actually opened and checked for a
+/// `boardgames.db` entry before being accepted, the same "decode to
+/// validate" approach the photo/profile-photo uploads use for images.
+pub async fn upload_backup(
+    Extension(CurrentUser(current)): Extension<CurrentUser>,
+    mut multipart: axum::extract::Multipart,
+) -> impl IntoResponse {
+    let Ok(Some(field)) = multipart.next_field().await else {
+        return render_backups(&current, None, Some("No file was uploaded.".to_string()))
+            .await
+            .into_response();
+    };
+    let Ok(bytes) = field.bytes().await else {
+        return render_backups(
+            &current,
+            None,
+            Some("Couldn't read the uploaded file.".to_string()),
+        )
+        .await
+        .into_response();
+    };
+    if bytes.is_empty() {
+        return render_backups(&current, None, Some("That file is empty.".to_string()))
+            .await
+            .into_response();
+    }
+
+    let bytes_for_check = bytes.clone();
+    let valid = tokio::task::spawn_blocking(move || {
+        let cursor = std::io::Cursor::new(&bytes_for_check[..]);
+        zip::ZipArchive::new(cursor)
+            .ok()
+            .is_some_and(|mut archive| archive.by_name("boardgames.db").is_ok())
+    })
+    .await
+    .unwrap_or(false);
+
+    if !valid {
+        return render_backups(
+            &current,
+            None,
+            Some(
+                "That doesn't look like a Board Game Tracker backup (couldn't find \
+                 boardgames.db inside the zip)."
+                    .to_string(),
+            ),
+        )
+        .await
+        .into_response();
+    }
+
+    if tokio::fs::create_dir_all(BACKUP_DIR).await.is_err() {
+        return render_backups(
+            &current,
+            None,
+            Some("Couldn't create the backups folder.".to_string()),
+        )
+        .await
+        .into_response();
+    }
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let filename = format!("backup-{timestamp}-uploaded-{nanos}.zip");
+    let path = format!("{BACKUP_DIR}/{filename}");
+
+    let message = if tokio::fs::write(&path, &bytes).await.is_ok() {
+        format!("Uploaded and added to the list below as {filename}.")
+    } else {
+        "Couldn't save the uploaded file.".to_string()
     };
 
     render_backups(&current, Some(message), None)

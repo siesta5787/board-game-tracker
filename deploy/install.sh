@@ -31,7 +31,7 @@ echo "Detected architecture: $(uname -m) -> $TARGET"
 
 echo "Installing prerequisites..."
 apt-get update -qq
-apt-get install -y -qq curl tar >/dev/null
+apt-get install -y -qq curl tar unzip >/dev/null
 
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
     echo "Creating service user '$SERVICE_USER'..."
@@ -140,6 +140,8 @@ cat >"$UPDATER_DIR/actions.sh" <<'ACTIONS_EOF'
 set -euo pipefail
 
 REPO="siesta5787/board-game-tracker"
+DATA_DIR="/opt/board-game-tracker/data"
+BACKUP_DIR="$DATA_DIR/backups"
 
 action_app_update() {
     curl -sSL "https://raw.githubusercontent.com/$REPO/master/deploy/update.sh" | bash
@@ -221,6 +223,81 @@ action_format_drive() {
     mount /mnt/board-game-backup
     echo "Drive formatted and mounted at /mnt/board-game-backup."
 }
+
+# Restores a named backup zip: stops the app, swaps in the backup's database
+# and photos, and restarts. Everything that can be validated up front
+# (filename shape, the file actually existing, the zip actually containing a
+# boardgames.db) happens *before* the app is stopped, so a bad request never
+# takes the app down for nothing. Once stopped, an EXIT trap guarantees the
+# app gets restarted no matter how the rest of this function finishes —
+# success, or an unexpected failure partway through the file swap — since
+# this is the last thing watcher.sh does before the script itself exits.
+action_restore_backup() {
+    local filename="$1"
+
+    if [ -z "$filename" ]; then
+        echo "restore_backup: no filename specified" >&2
+        return 1
+    fi
+    case "$filename" in
+        backup-*.zip) ;;
+        *)
+            echo "restore_backup: refusing to restore '$filename' — doesn't match the expected backup-*.zip pattern" >&2
+            return 1
+            ;;
+    esac
+    if echo "$filename" | grep -qE '/|\.\.'; then
+        echo "restore_backup: refusing to restore '$filename' — invalid characters" >&2
+        return 1
+    fi
+
+    local backup_path="$BACKUP_DIR/$filename"
+    if [ ! -f "$backup_path" ]; then
+        echo "restore_backup: '$backup_path' not found" >&2
+        return 1
+    fi
+
+    local restore_tmp
+    restore_tmp="$(mktemp -d)"
+    if ! unzip -q -o "$backup_path" -d "$restore_tmp"; then
+        echo "restore_backup: couldn't unzip '$backup_path'" >&2
+        rm -rf "$restore_tmp"
+        return 1
+    fi
+    if [ ! -f "$restore_tmp/boardgames.db" ]; then
+        echo "restore_backup: backup zip didn't contain boardgames.db, aborting" >&2
+        rm -rf "$restore_tmp"
+        return 1
+    fi
+
+    echo "Stopping the app for restore..."
+    systemctl stop board-game-tracker
+    trap 'systemctl start board-game-tracker' EXIT
+
+    # Safety copy of whatever's live right now, in case the wrong backup
+    # gets restored — a raw folder rather than a zip, so this doesn't depend
+    # on any extra tooling being present.
+    local prerestore_dir
+    prerestore_dir="$BACKUP_DIR/prerestore-$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$prerestore_dir"
+    cp "$DATA_DIR/boardgames.db" "$prerestore_dir/boardgames.db" 2>/dev/null || true
+    if [ -d "$DATA_DIR/photos" ]; then
+        cp -r "$DATA_DIR/photos" "$prerestore_dir/photos" 2>/dev/null || true
+    fi
+
+    cp "$restore_tmp/boardgames.db" "$DATA_DIR/boardgames.db"
+    rm -f "$DATA_DIR/boardgames.db-wal" "$DATA_DIR/boardgames.db-shm"
+    rm -rf "$DATA_DIR/photos"
+    if [ -d "$restore_tmp/photos" ]; then
+        cp -r "$restore_tmp/photos" "$DATA_DIR/photos"
+    else
+        mkdir -p "$DATA_DIR/photos"
+    fi
+    rm -rf "$restore_tmp"
+    chown -R boardgame:boardgame "$DATA_DIR"
+
+    echo "Restore complete."
+}
 ACTIONS_EOF
 
 cat >"$UPDATER_DIR/watcher.sh" <<'WATCHER_EOF'
@@ -251,6 +328,7 @@ case "$ACTION" in
     tailscale_update) action_tailscale_update ;;
     reboot) action_reboot ;;
     format_drive) action_format_drive "$ARG" ;;
+    restore_backup) action_restore_backup "$ARG" ;;
     *)
         echo "Unknown or empty update-request action: '$ACTION'" >&2
         exit 1
