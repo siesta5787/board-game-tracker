@@ -20,7 +20,16 @@ From your computer, SSH into the Pi (replace with the hostname or IP you set):
 ssh username@boardgames.local
 ```
 
-Then run the installer:
+**First, update the OS itself** before installing anything else:
+
+```
+sudo apt update && sudo apt full-upgrade -y
+sudo reboot
+```
+
+A freshly-flashed image has never had a single package update applied, so this is often a large download and a slow first run (dozens of minutes on a Pi Zero 2 W) — much better to get it out of the way now, on a Pi with nothing else running yet, than to hit it later from the app's System updates page while you're actively using it.
+
+Once it's rebooted and reconnected, run the installer:
 
 ```
 curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master/deploy/install.sh | sudo bash

@@ -11,6 +11,9 @@
         {% if let Some(m) = message %}
         <div class="success">{{ m }}</div>
         {% endif %}
+        {% if let Some(w) = watcher_warning %}
+        <div class="error">{{ w }}</div>
+        {% endif %}
 
         <p class="hint" style="margin-top:8px;">Running version: <strong>{{ current_version }}</strong></p>
 
@@ -34,6 +37,21 @@
 
         <form method="post" action="/admin/update/restart" onsubmit="return confirm('Restart the app now?');" style="margin-top:8px;">
             <button type="submit" class="button secondary">Restart app</button>
+        </form>
+
+        <h3 style="margin-top:24px;">Automatic updates</h3>
+        <form method="post" action="/admin/update/schedule" style="max-width:500px;">
+            <label for="check_interval_hours">Check for a new version every</label>
+            <select id="check_interval_hours" name="check_interval_hours">
+                <option value="1" {% if schedule.check_interval_hours == "1" %}selected{% endif %}>1 hour</option>
+                <option value="6" {% if schedule.check_interval_hours == "6" %}selected{% endif %}>6 hours</option>
+                <option value="12" {% if schedule.check_interval_hours == "12" %}selected{% endif %}>12 hours</option>
+                <option value="24" {% if schedule.check_interval_hours == "24" %}selected{% endif %}>24 hours</option>
+            </select>
+
+            <label><input type="checkbox" name="auto_install_enabled" value="1" style="width:auto;display:inline-block;margin-right:6px;" {% if schedule.auto_install_enabled %}checked{% endif %}> Automatically install new versions when found (the app restarts on its own)</label>
+
+            <button type="submit" class="button" style="margin-top:12px;">Save</button>
         </form>
     </main>
 </body>

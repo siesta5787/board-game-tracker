@@ -20,6 +20,7 @@ use axum::extract::State;
 use axum::response::{Html, IntoResponse};
 use axum::{Form, http};
 use serde::Deserialize;
+use std::time::Duration;
 
 use crate::AppState;
 use crate::models::User;
@@ -27,25 +28,43 @@ use crate::security::{self, CurrentUser};
 
 const FLAG_FILE: &str = "data/update_requested";
 const SCHEDULE_FILE: &str = "data/schedule.conf";
+const SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Runs a command with a timeout — a stuck subprocess (e.g. `apt` blocked
+/// waiting on the dpkg lock while an upgrade is still running) must never be
+/// able to hang this page indefinitely. `watcher_busy` below is the primary
+/// defense (skips calling apt at all when an update is known to be running);
+/// this timeout is the backstop for cases that check doesn't catch.
 async fn run(cmd: &str, args: &[&str]) -> Option<String> {
-    let output = tokio::process::Command::new(cmd)
-        .args(args)
-        .output()
+    let child = tokio::process::Command::new(cmd).args(args).output();
+    let output = tokio::time::timeout(SUBPROCESS_TIMEOUT, child)
         .await
+        .ok()?
         .ok()?;
     Some(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-async fn apt_upgradable() -> Vec<String> {
-    let Some(output) = run("apt", &["list", "--upgradable"]).await else {
-        return Vec::new();
-    };
-    output
-        .lines()
-        .filter(|l| !l.starts_with("Listing...") && !l.trim().is_empty())
-        .map(|l| l.split('/').next().unwrap_or(l).to_string())
-        .collect()
+/// True while the root-owned watcher is actively running a requested action
+/// (an OS upgrade in particular can take a long time on a Pi's first run).
+/// Querying another unit's status is a read-only systemd operation any local
+/// user can do — no privilege needed, unlike actually controlling the unit.
+async fn watcher_busy() -> bool {
+    tokio::process::Command::new("systemctl")
+        .args(["is-active", "--quiet", "board-game-tracker-updater.service"])
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+async fn apt_upgradable_count() -> Option<usize> {
+    let output = run("apt", &["list", "--upgradable"]).await?;
+    Some(
+        output
+            .lines()
+            .filter(|l| !l.starts_with("Listing...") && !l.trim().is_empty())
+            .count(),
+    )
 }
 
 async fn tailscale_versions() -> Option<(String, String)> {
@@ -133,7 +152,9 @@ struct SystemTemplate {
     title: String,
     username: String,
     message: Option<String>,
-    os_updates: Vec<String>,
+    watcher_warning: Option<String>,
+    watcher_busy: bool,
+    os_update_count: Option<usize>,
     reboot_required: bool,
     tailscale_current: Option<String>,
     tailscale_upstream: Option<String>,
@@ -142,29 +163,46 @@ struct SystemTemplate {
 }
 
 async fn render_system_page(current: &User, message: Option<String>) -> Html<String> {
-    let os_updates = apt_upgradable().await;
-    let reboot_required = reboot_required();
-    let tailscale = tailscale_versions().await;
-    let (tailscale_current, tailscale_upstream, tailscale_update_available) = match tailscale {
-        Some((current, upstream)) => {
-            let available = !upstream.is_empty() && current != upstream;
-            (Some(current), Some(upstream), available)
-        }
-        None => (None, None, false),
-    };
-    let schedule = ScheduleConfig::load().await;
+    let busy = watcher_busy().await;
+
+    // Skip calling apt/tailscale entirely while the watcher is busy — apt
+    // would just block on the dpkg lock the in-progress action is holding,
+    // and there's nothing new to report while it's still running anyway.
+    let (os_update_count, tailscale_current, tailscale_upstream, tailscale_update_available) =
+        if busy {
+            (None, None, None, false)
+        } else {
+            let os_update_count = apt_upgradable_count().await;
+            let tailscale = tailscale_versions().await;
+            let (tailscale_current, tailscale_upstream, tailscale_update_available) =
+                match tailscale {
+                    Some((current, upstream)) => {
+                        let available = !upstream.is_empty() && current != upstream;
+                        (Some(current), Some(upstream), available)
+                    }
+                    None => (None, None, false),
+                };
+            (
+                os_update_count,
+                tailscale_current,
+                tailscale_upstream,
+                tailscale_update_available,
+            )
+        };
 
     Html(
         SystemTemplate {
             title: "System updates".to_string(),
             username: current.username.clone(),
             message,
-            os_updates,
-            reboot_required,
+            watcher_warning: security::watcher_version_warning().await,
+            watcher_busy: busy,
+            os_update_count,
+            reboot_required: reboot_required(),
             tailscale_current,
             tailscale_upstream,
             tailscale_update_available,
-            schedule,
+            schedule: ScheduleConfig::load().await,
         }
         .render()
         .unwrap(),
@@ -218,7 +256,8 @@ pub async fn trigger_os_upgrade(
         &current,
         "os_upgrade",
         "os_upgrade_triggered",
-        "Installing OS updates now — this can take a few minutes. Refresh this page shortly.",
+        "Installing OS updates now — this can take a long time on a Pi's first upgrade. \
+         This page will show \"still working\" until it's done — feel free to check back later.",
     )
     .await
 }

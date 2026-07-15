@@ -103,6 +103,9 @@ async fn main() {
 
     tokio::task::spawn(handlers::backups::run_scheduled_backups(state.clone()));
     tokio::task::spawn(handlers::backups::run_live_mirror(state.clone()));
+    tokio::task::spawn(handlers::system_update::run_scheduled_app_update_check(
+        state.clone(),
+    ));
 
     // Reachable without being logged in at all. /auth/verify-2fa belongs here
     // (not under require_session) because at that point the user only has a
@@ -193,6 +196,10 @@ async fn main() {
         .route(
             "/admin/update/restart",
             post(handlers::system_update::trigger_restart),
+        )
+        .route(
+            "/admin/update/schedule",
+            post(handlers::system_update::save_app_update_schedule),
         )
         .route(
             "/admin/system",

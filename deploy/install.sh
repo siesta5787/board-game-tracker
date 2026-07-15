@@ -46,6 +46,14 @@ tar -xzf /tmp/board-game-tracker.tar.gz -C "$INSTALL_DIR"
 rm /tmp/board-game-tracker.tar.gz
 chmod +x "$INSTALL_DIR/board_game_tracker"
 
+# "latest/download/..." redirects to "download/vX.Y.Z/...", which is the only
+# place the actual version tag shows up in this whole download flow. Recorded
+# so the app can tell you when the root-side watcher/scheduler scripts (only
+# ever refreshed by re-running this installer, never by the in-app update
+# button) have fallen behind the app version, instead of silently no-op'ing
+# on features the installed watcher doesn't know about yet.
+INSTALLED_VERSION="$(curl -sI "$TARBALL_URL" | grep -i '^location:' | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+
 mkdir -p "$INSTALL_DIR/data/photos"
 
 if [ ! -f "$INSTALL_DIR/.env" ]; then
@@ -64,6 +72,10 @@ EOF
 else
     echo "Existing .env found — leaving it untouched."
     PRINT_CREDENTIALS=0
+fi
+
+if [ -n "$INSTALLED_VERSION" ]; then
+    echo -n "$INSTALLED_VERSION" >"$INSTALL_DIR/data/watcher_version"
 fi
 
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"

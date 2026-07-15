@@ -11,40 +11,58 @@
         {% if let Some(m) = message %}
         <div class="success">{{ m }}</div>
         {% endif %}
+        {% if let Some(w) = watcher_warning %}
+        <div class="error">{{ w }}</div>
+        {% endif %}
+
+        {% if watcher_busy %}
+        <div class="success">An update or check is currently running in the background (this can take a long time, especially for a Pi's first OS upgrade). This page will show current status once it's done — check back later.</div>
+        {% endif %}
 
         <h3>Raspberry Pi OS</h3>
-        {% if os_updates.is_empty() %}
-        <p class="hint" style="margin-top:8px;">No package updates pending.</p>
+        {% if watcher_busy %}
+        <p class="hint" style="margin-top:8px;">Status unavailable while an update is running.</p>
         {% else %}
-        <p class="hint" style="margin-top:8px;">{{ os_updates.len() }} package(s) have updates available:</p>
-        <p class="hint">{{ os_updates.join(", ") }}</p>
+            {% if let Some(count) = os_update_count %}
+                {% if *count == 0 %}
+                <p class="hint" style="margin-top:8px;">No package updates pending.</p>
+                {% else %}
+                <p class="hint" style="margin-top:8px;">{{ count }} package(s) have updates available.</p>
+                {% endif %}
+            {% else %}
+            <p class="hint" style="margin-top:8px;">Couldn't check for package updates right now.</p>
+            {% endif %}
         {% endif %}
         {% if reboot_required %}
         <div class="error">A reboot is required to finish a previous update.</div>
         {% endif %}
 
         <form method="post" action="/admin/system/os/check" style="display:inline;">
-            <button type="submit" class="button-small">Check for updates</button>
+            <button type="submit" class="button-small" {% if watcher_busy %}disabled{% endif %}>Check for updates</button>
         </form>
         <form method="post" action="/admin/system/os/upgrade" style="display:inline;" onsubmit="return confirm('Install all available OS package updates now?');">
-            <button type="submit" class="button-small">Install updates now</button>
+            <button type="submit" class="button-small" {% if watcher_busy %}disabled{% endif %}>Install updates now</button>
         </form>
         {% if reboot_required %}
         <form method="post" action="/admin/system/reboot" style="display:inline;" onsubmit="return confirm('Reboot the Pi now? The app will be unreachable for about a minute.');">
-            <button type="submit" class="button-small button-danger">Reboot now</button>
+            <button type="submit" class="button-small button-danger" {% if watcher_busy %}disabled{% endif %}>Reboot now</button>
         </form>
         {% endif %}
 
         <h3 style="margin-top:24px;">Tailscale</h3>
-        {% if let Some(cur) = tailscale_current %}
-        <p class="hint">Running: <strong>{{ cur }}</strong>{% if let Some(up) = tailscale_upstream %} &middot; latest available: <strong>{{ up }}</strong>{% endif %}</p>
-        {% if tailscale_update_available %}
-        <div class="success">A Tailscale update is available.</div>
+        {% if watcher_busy %}
+        <p class="hint">Status unavailable while an update is running.</p>
         {% else %}
-        <p class="hint">You're up to date.</p>
-        {% endif %}
-        {% else %}
-        <p class="hint">Couldn't read Tailscale's version — is it installed on this Pi?</p>
+            {% if let Some(cur) = tailscale_current %}
+            <p class="hint">Running: <strong>{{ cur }}</strong>{% if let Some(up) = tailscale_upstream %} &middot; latest available: <strong>{{ up }}</strong>{% endif %}</p>
+            {% if tailscale_update_available %}
+            <div class="success">A Tailscale update is available.</div>
+            {% else %}
+            <p class="hint">You're up to date.</p>
+            {% endif %}
+            {% else %}
+            <p class="hint">Couldn't read Tailscale's version — is it installed on this Pi?</p>
+            {% endif %}
         {% endif %}
 
         {% if tailscale_update_available %}

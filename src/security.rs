@@ -364,3 +364,36 @@ pub async fn sync_player_name(db: &sqlx::SqlitePool, user_id: i64, name: &str) {
         .await
         .ok();
 }
+
+/// The root-side watcher/scheduler scripts are only ever refreshed by
+/// re-running install.sh — the in-app "Update now" button only swaps the
+/// app binary, never those scripts. That means the running app version and
+/// the installed watcher version can drift apart (e.g. right after an
+/// in-app update, before install.sh has been re-run over SSH), in which
+/// case newer action words the app might send (a new OS-update action, a
+/// new format-drive action, etc.) would silently hit "unknown action" on
+/// the watcher side and do nothing. Surfacing that mismatch explicitly
+/// beats a silent no-op.
+pub async fn watcher_version_warning() -> Option<String> {
+    let reinstall_hint = "curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master/deploy/install.sh | sudo bash";
+    match tokio::fs::read_to_string("data/watcher_version").await {
+        Ok(installed) => {
+            let installed = installed.trim();
+            if installed.is_empty() || installed == crate::APP_VERSION {
+                None
+            } else {
+                Some(format!(
+                    "The system helper scripts are on {installed} but the app is on {}. \
+                     Some newer admin features may not work until you re-run the installer \
+                     over SSH: {reinstall_hint}",
+                    crate::APP_VERSION
+                ))
+            }
+        }
+        Err(_) => Some(format!(
+            "Couldn't tell what version the system helper scripts are on (this looks like an \
+             older install). If a newer feature on this page isn't working, re-run the \
+             installer over SSH: {reinstall_hint}"
+        )),
+    }
+}
