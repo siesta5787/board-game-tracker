@@ -2,12 +2,16 @@
     <a href="/" class="brand">Board Game Tracker</a>
 </header>
 
+<div id="offline-banner" class="offline-banner" hidden>
+    Showing a saved copy from <span id="offline-banner-time">an earlier visit</span> — connection problem.
+</div>
+
 <nav class="bottom-nav">
     <a href="/" class="bottom-nav-item" data-match="^/$">
         <svg class="bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10"/></svg>
         <span>Home</span>
     </a>
-    <a href="/collection" class="bottom-nav-item" data-match="^/collection">
+    <a href="/collection/{{ username }}" class="bottom-nav-item" data-match="^/collection">
         <svg class="bottom-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z"/></svg>
         <span>Collection</span>
     </a>
@@ -41,6 +45,26 @@
             el.classList.add("active");
         }
     });
+
+    function showOfflineBanner(cachedAt) {
+        var banner = document.getElementById("offline-banner");
+        if (!banner || !banner.hidden) return;
+        if (cachedAt) {
+            var timeEl = document.getElementById("offline-banner-time");
+            var parsed = new Date(cachedAt);
+            if (timeEl && !isNaN(parsed.getTime())) {
+                timeEl.textContent = parsed.toLocaleString();
+            }
+        }
+        banner.hidden = false;
+    }
+
+    // Set by the service worker (see templates/sw.js) when this page was
+    // served from its offline cache rather than a live network response.
+    if (document.documentElement.dataset.offlineCache) {
+        showOfflineBanner(document.documentElement.dataset.cachedAt);
+    }
+
     fetch("/notifications/unread-count", { cache: "no-store" })
         .then(function (r) { return r.ok ? r.text() : "0"; })
         .then(function (text) {
@@ -50,6 +74,13 @@
                 badge.hidden = false;
             }
         })
-        .catch(function () {});
+        .catch(function () {
+            // This request is never intercepted by the service worker, so
+            // a failure here means the network is genuinely unreachable
+            // right now — a more reliable signal than navigator.onLine,
+            // which only reports whether *some* network link exists, not
+            // whether it can actually reach this app's server.
+            showOfflineBanner();
+        });
 })();
 </script>

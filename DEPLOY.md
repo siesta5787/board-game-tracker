@@ -67,6 +67,8 @@ curl -sSL https://raw.githubusercontent.com/siesta5787/board-game-tracker/master
 
 It's safe to re-run any time — it never touches your existing `.env` or database.
 
+The app also caches a few pages for offline browsing (see "Offline read mode" in `CLAUDE.md`) — that cache is automatically invalidated on every update with no extra deploy step; nothing to do here.
+
 ## Useful commands on the Pi
 
 - Check it's running: `systemctl status board-game-tracker`

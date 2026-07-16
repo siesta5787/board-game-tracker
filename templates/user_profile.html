@@ -59,7 +59,7 @@
         {% for p in plays %}
             <div class="game-card play-card">
                 {% if let Some(thumb) = p.thumbnail_url %}
-                <img src="{{ thumb }}" alt="" class="game-thumb">
+                <img src="{{ thumb }}" alt="" class="game-thumb" onerror="this.style.display='none'">
                 {% else %}
                 <div class="game-thumb game-thumb-placeholder"></div>
                 {% endif %}

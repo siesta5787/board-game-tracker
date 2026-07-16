@@ -232,6 +232,15 @@ summary.button::-webkit-details-marker {
     color: var(--color-text);
 }
 
+.offline-banner {
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
 .bottom-nav {
     position: fixed;
     bottom: 0;

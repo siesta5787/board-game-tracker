@@ -28,7 +28,7 @@
         {% for entry in entries %}
             <div class="game-card">
                 {% if let Some(thumb) = entry.thumbnail_url %}
-                <img src="{{ thumb }}" alt="" class="game-thumb">
+                <img src="{{ thumb }}" alt="" class="game-thumb" onerror="this.style.display='none'">
                 {% else %}
                 <div class="game-thumb game-thumb-placeholder"></div>
                 {% endif %}

@@ -13,7 +13,7 @@ use axum::routing::{get, post};
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteSynchronous};
 use std::str::FromStr;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_sessions::cookie::time::Duration as CookieDuration;
 use tower_sessions::session_store::ExpiredDeletion;
@@ -356,8 +356,15 @@ async fn main() {
                 )),
         )
         // Served at the root path (not /static/sw.js) so its default scope
-        // covers the whole app, not just /static/.
-        .route_service("/sw.js", ServeFile::new("static/sw.js"))
+        // covers the whole app, not just /static/. Rendered dynamically
+        // (not a static file) so APP_VERSION is baked into its bytes on
+        // every request — see handlers::sw for why that matters. This
+        // route must stay outside require_full_auth: the browser's
+        // background SW-update checks happen regardless of session state,
+        // and if this ever required auth, an expired session would get a
+        // redirect-to-login page instead of the script, silently breaking
+        // update detection for that client.
+        .route("/sw.js", get(handlers::sw::serve_sw))
         .with_state(state)
         .layer(session_layer);
 
