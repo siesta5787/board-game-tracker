@@ -127,6 +127,11 @@ button:hover, .button:hover {
     background: var(--color-primary-hover);
 }
 
+button:disabled, .button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 button.secondary, .button.secondary {
     background: transparent;
     color: var(--color-text);

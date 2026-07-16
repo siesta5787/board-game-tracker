@@ -18,10 +18,23 @@
         <div class="error">{{ e }}</div>
         {% endif %}
 
-        <form method="post" action="/import/bgcatalog" enctype="multipart/form-data" style="max-width:400px;">
+        <form
+            method="post"
+            action="/import/bgcatalog"
+            enctype="multipart/form-data"
+            style="max-width:400px;"
+            onsubmit="
+                var btn = document.getElementById('import-submit');
+                if (btn.dataset.submitted) { return false; }
+                btn.dataset.submitted = '1';
+                btn.disabled = true;
+                btn.textContent = 'Importing… this can take about a minute, please wait';
+                return true;
+            "
+        >
             <label for="export_zip">Export file (.zip)</label>
             <input type="file" id="export_zip" name="export_zip" accept=".zip" required style="margin-bottom:16px;">
-            <button type="submit">Import</button>
+            <button type="submit" id="import-submit">Import</button>
         </form>
     </main>
 </body>
