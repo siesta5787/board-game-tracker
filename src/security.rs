@@ -367,10 +367,12 @@ pub async fn sync_player_name(db: &sqlx::SqlitePool, user_id: i64, name: &str) {
 
 /// Plain read of whatever version install.sh last stamped into
 /// `data/watcher_version`, with no comparison against the running app
-/// version — the software-update page shows this next to the running app
-/// version, and reserves any alarming styling for a genuine, confirmed
-/// mismatch rather than this merely-unknown case (an install from before
-/// this marker file existed, for instance, isn't actually broken).
+/// version — purely for display ("System helper scripts: vX.Y.Z"). Whether
+/// that's actually a *problem* is a separate question, answered by
+/// `watcher_needs_update` below — the app's own release version has moved
+/// on far more often than install.sh's actual privileged-script contents
+/// have, so a plain version-string mismatch here is normal and expected,
+/// not evidence of anything missing.
 pub async fn installed_watcher_version() -> Option<String> {
     let installed = tokio::fs::read_to_string("data/watcher_version")
         .await
@@ -381,6 +383,72 @@ pub async fn installed_watcher_version() -> Option<String> {
     } else {
         Some(installed.to_string())
     }
+}
+
+/// The watcher "schema" version: a small counter, independent of the app's
+/// own release version, bumped only when install.sh's root-side scripts
+/// (actions.sh/watcher.sh/scheduler.sh/backup_sync.sh) actually gain or
+/// change a privileged action. The app's own version number changes on
+/// every release (including pure app-layer releases with zero root-side
+/// changes), so comparing it directly against the installed watcher's
+/// version string — as an earlier version of this check did — flagged a
+/// "mismatch" after every single app update, even when nothing the watcher
+/// does had changed at all. This is what the schema decouples.
+///
+/// Bump this, and the matching `WATCHER_SCHEMA_VERSION` in
+/// deploy/install.sh, together in whatever commit adds a new privileged
+/// action word.
+pub const REQUIRED_WATCHER_SCHEMA: u32 = 2;
+
+/// Schema versions known to correspond to specific past app releases, for
+/// installs made before `data/watcher_schema_version` existed at all (only
+/// `data/watcher_version`, the raw release tag, was stamped). Lets an
+/// existing install correctly register as "current" the moment this code
+/// ships, with no need to re-run install.sh purely to pick up a marker
+/// file — re-running it is still exactly how they'd pick up an *actual*
+/// new schema in the future.
+const SCHEMA_2_INTRODUCED_IN: (u32, u32, u32) = (0, 7, 0); // restore_backup + unzip
+
+fn parse_version_tuple(tag: &str) -> Option<(u32, u32, u32)> {
+    let tag = tag.trim().trim_start_matches('v');
+    let mut parts = tag.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    Some((major, minor, patch))
+}
+
+/// Best-effort read of the installed watcher's actual capability level.
+/// Prefers the explicit `data/watcher_schema_version` marker; falls back to
+/// inferring a schema from the older `data/watcher_version` release-tag
+/// marker for installs made before schema tracking existed. `None` means
+/// genuinely unknown (no marker of any kind — a very old or never-run
+/// installer).
+async fn installed_watcher_schema() -> Option<u32> {
+    if let Ok(raw) = tokio::fs::read_to_string("data/watcher_schema_version").await {
+        if let Ok(schema) = raw.trim().parse::<u32>() {
+            return Some(schema);
+        }
+    }
+
+    let installed = installed_watcher_version().await?;
+    let version = parse_version_tuple(&installed)?;
+    Some(if version >= SCHEMA_2_INTRODUCED_IN {
+        2
+    } else {
+        1
+    })
+}
+
+/// Whether the installed watcher is missing a privileged action the app
+/// might need to request — the only condition that should ever surface the
+/// alarming "re-run the installer" warning. An unknown schema (no marker at
+/// all) is treated as needing an update too, since it can't be confirmed
+/// safe either way.
+pub async fn watcher_needs_update() -> bool {
+    installed_watcher_schema()
+        .await
+        .is_none_or(|schema| schema < REQUIRED_WATCHER_SCHEMA)
 }
 
 /// Re-run hint shown wherever the watcher version is displayed — the

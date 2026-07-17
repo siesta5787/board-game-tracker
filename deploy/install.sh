@@ -13,6 +13,15 @@ REPO="siesta5787/board-game-tracker"
 INSTALL_DIR="/opt/board-game-tracker"
 SERVICE_USER="boardgame"
 
+# Bumped only when the privileged scripts below (actions.sh/watcher.sh/
+# scheduler.sh/backup_sync.sh) actually gain or change a privileged action —
+# independent of the app's own release version, which changes on every
+# release including ones that touch nothing here. The app compares this
+# against its own required minimum (security::REQUIRED_WATCHER_SCHEMA) to
+# decide whether re-running this installer is actually necessary, rather
+# than just checking whether the release version strings happen to match.
+WATCHER_SCHEMA_VERSION="2"
+
 if [ "$(id -u)" -ne 0 ]; then
     echo "Please run this as root (e.g. 'sudo bash install.sh')." >&2
     exit 1
@@ -77,6 +86,7 @@ fi
 if [ -n "$INSTALLED_VERSION" ]; then
     echo -n "$INSTALLED_VERSION" >"$INSTALL_DIR/data/watcher_version"
 fi
+echo -n "$WATCHER_SCHEMA_VERSION" >"$INSTALL_DIR/data/watcher_schema_version"
 
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 chmod 600 "$INSTALL_DIR/.env"
