@@ -222,11 +222,16 @@ pub async fn add_search_form(
 
     if !results.is_empty() {
         let ids: Vec<i64> = results.iter().map(|r| r.bgg_id).collect();
-        if let Ok(thumbnails) = bgg::fetch_thumbnails(&ids, token.as_deref()).await {
-            for (bgg_id, thumbnail) in thumbnails {
-                if let Some(r) = results.iter_mut().find(|r| r.bgg_id == bgg_id) {
-                    r.thumbnail_url = thumbnail;
+        match bgg::fetch_thumbnails(&ids, token.as_deref()).await {
+            Ok(thumbnails) => {
+                for (bgg_id, thumbnail) in thumbnails {
+                    if let Some(r) = results.iter_mut().find(|r| r.bgg_id == bgg_id) {
+                        r.thumbnail_url = thumbnail;
+                    }
                 }
+            }
+            Err(e) => {
+                tracing::warn!("BGG batch thumbnail fetch failed: {e}");
             }
         }
     }

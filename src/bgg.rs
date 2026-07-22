@@ -85,9 +85,10 @@ pub async fn search(query: &str, token: Option<&str>) -> Result<Vec<SearchResult
 /// BGG's search endpoint returns no images, only `/thing` does — but `/thing`
 /// accepts a comma-separated id list, so a whole page of search results can
 /// get their thumbnails in one extra request rather than one per row.
-/// Capped since a single very common query (e.g. a base game with many
-/// expansions/reprints) could otherwise build an unbounded id list.
-const MAX_BATCH_THUMBNAILS: usize = 25;
+/// BGG hard-caps this at 20 ids per request (confirmed: 21+ returns HTTP 400
+/// "Cannot load more than 20 items"), so this cap is load-bearing, not just
+/// a politeness margin — raising it breaks the request outright.
+const MAX_BATCH_THUMBNAILS: usize = 20;
 
 pub async fn fetch_thumbnails(
     ids: &[i64],
@@ -102,17 +103,17 @@ pub async fn fetch_thumbnails(
         .map(|id| id.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    let url = format!("https://boardgamegeek.com/xmlapi2/thing?id={id_list}");
+    let url = format!("https://boardgamegeek.com/xmlapi2/thing?id={id_list}&stats=1");
     let mut request = client().get(&url);
     if let Some(token) = token {
         request = request.bearer_auth(token);
     }
     let response = request.send().await.map_err(|e| e.to_string())?;
     let status = response.status();
-    if !status.is_success() {
-        return Err(format!("BGG returned HTTP {status}"));
-    }
     let body = response.text().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!("BGG returned HTTP {status}: {body}"));
+    }
     Ok(parse_thumbnails_xml(&body))
 }
 
