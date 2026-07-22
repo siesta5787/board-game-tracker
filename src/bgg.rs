@@ -26,6 +26,7 @@ pub struct SearchResult {
     pub name: String,
     pub year_published: Option<i32>,
     pub is_expansion: bool,
+    pub thumbnail_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -79,6 +80,84 @@ pub async fn search(query: &str, token: Option<&str>) -> Result<Vec<SearchResult
         return Err(format!("BGG returned HTTP {status}"));
     }
     Ok(parse_search_xml(&body))
+}
+
+/// BGG's search endpoint returns no images, only `/thing` does — but `/thing`
+/// accepts a comma-separated id list, so a whole page of search results can
+/// get their thumbnails in one extra request rather than one per row.
+/// Capped since a single very common query (e.g. a base game with many
+/// expansions/reprints) could otherwise build an unbounded id list.
+const MAX_BATCH_THUMBNAILS: usize = 25;
+
+pub async fn fetch_thumbnails(
+    ids: &[i64],
+    token: Option<&str>,
+) -> Result<Vec<(i64, Option<String>)>, String> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let id_list = ids
+        .iter()
+        .take(MAX_BATCH_THUMBNAILS)
+        .map(|id| id.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let url = format!("https://boardgamegeek.com/xmlapi2/thing?id={id_list}");
+    let mut request = client().get(&url);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.map_err(|e| e.to_string())?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("BGG returned HTTP {status}"));
+    }
+    let body = response.text().await.map_err(|e| e.to_string())?;
+    Ok(parse_thumbnails_xml(&body))
+}
+
+fn parse_thumbnails_xml(xml: &str) -> Vec<(i64, Option<String>)> {
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+    let mut results = Vec::new();
+
+    let mut current_id: Option<i64> = None;
+    let mut current_thumbnail: Option<String> = None;
+    let mut in_thumbnail = false;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.local_name().as_ref() {
+                b"item" => {
+                    current_id = get_attr(&e, b"id").and_then(|s| s.parse().ok());
+                    current_thumbnail = None;
+                }
+                b"thumbnail" => in_thumbnail = true,
+                _ => {}
+            },
+            Ok(Event::Text(t)) => {
+                if in_thumbnail {
+                    current_thumbnail = decode_text(&t);
+                }
+            }
+            Ok(Event::End(e)) => match e.local_name().as_ref() {
+                b"thumbnail" => in_thumbnail = false,
+                b"item" => {
+                    if let Some(bgg_id) = current_id.take() {
+                        results.push((bgg_id, current_thumbnail.take()));
+                    }
+                }
+                _ => {}
+            },
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    results
 }
 
 pub async fn fetch_game(bgg_id: i64, token: Option<&str>) -> Result<Option<GameDetails>, String> {
@@ -142,6 +221,7 @@ fn parse_search_xml(xml: &str) -> Vec<SearchResult> {
                             name,
                             year_published: current_year.take(),
                             is_expansion: current_is_expansion,
+                            thumbnail_url: None,
                         });
                     }
                 }

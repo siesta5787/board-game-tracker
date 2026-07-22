@@ -598,6 +598,16 @@ th {
     border: 1px dashed var(--color-border);
 }
 
+.search-result-thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+    background: var(--color-bg);
+    display: block;
+}
+
 .game-info {
     flex: 1;
     min-width: 0;

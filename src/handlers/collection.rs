@@ -192,7 +192,7 @@ pub async fn add_search_form(
 ) -> impl IntoResponse {
     let query = params.q.unwrap_or_default();
     let token = settings::get(&state.db, settings::BGG_API_TOKEN).await;
-    let (results, error) = if query.trim().is_empty() {
+    let (mut results, error) = if query.trim().is_empty() {
         (Vec::new(), None)
     } else if token.is_none() {
         (
@@ -219,6 +219,17 @@ pub async fn add_search_form(
             ),
         }
     };
+
+    if !results.is_empty() {
+        let ids: Vec<i64> = results.iter().map(|r| r.bgg_id).collect();
+        if let Ok(thumbnails) = bgg::fetch_thumbnails(&ids, token.as_deref()).await {
+            for (bgg_id, thumbnail) in thumbnails {
+                if let Some(r) = results.iter_mut().find(|r| r.bgg_id == bgg_id) {
+                    r.thumbnail_url = thumbnail;
+                }
+            }
+        }
+    }
 
     Html(
         CollectionAddTemplate {

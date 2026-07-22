@@ -23,6 +23,7 @@
         <table>
             <thead>
                 <tr>
+                    <th></th>
                     <th>Name</th>
                     <th>Year</th>
                     <th>Add as</th>
@@ -32,6 +33,15 @@
             <tbody>
             {% for r in results %}
                 <tr>
+                    <td>
+                        <a href="/collection/add/preview/{{ r.bgg_id }}?q={{ query|urlencode }}">
+                        {% if let Some(thumb) = r.thumbnail_url %}
+                        <img src="{{ thumb }}" alt="" class="search-result-thumb">
+                        {% else %}
+                        <div class="search-result-thumb game-thumb-placeholder"></div>
+                        {% endif %}
+                        </a>
+                    </td>
                     <td><a href="/collection/add/preview/{{ r.bgg_id }}?q={{ query|urlencode }}">{{ r.name }}</a>{% if r.is_expansion %} <span class="badge">Expansion</span>{% endif %}</td>
                     <td>{% if let Some(y) = r.year_published %}{{ y }}{% endif %}</td>
                     <td colspan="2">
