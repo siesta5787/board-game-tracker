@@ -260,6 +260,10 @@ async fn main() {
             get(handlers::collection::manual_add_form).post(handlers::collection::create_manual),
         )
         .route(
+            "/collection/add/preview/{bgg_id}",
+            get(handlers::collection::preview_from_bgg),
+        )
+        .route(
             "/collection/{game_id}/status/{status}/add",
             post(handlers::collection::add_status),
         )

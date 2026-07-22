@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <p><a href="/collection/add?q={{ query|urlencode }}">&larr; Back to search results</a></p>
+
+        <div class="game-detail-header">
+            {% if let Some(img) = game.image_url %}
+            <img src="{{ img }}" alt="" class="game-detail-image">
+            {% else if let Some(thumb) = game.thumbnail_url %}
+            <img src="{{ thumb }}" alt="" class="game-detail-image">
+            {% else %}
+            <div class="game-detail-image game-thumb-placeholder"></div>
+            {% endif %}
+            <div>
+                <h1>{{ game.name }}{% if let Some(y) = game.year_published %} <span class="muted">({{ y }})</span>{% endif %}</h1>
+                {% if game.is_expansion %}
+                <p class="muted">
+                    Expansion
+                    {% if let Some(bg_id) = game.base_game_bgg_id %}
+                    for <a href="https://boardgamegeek.com/boardgame/{{ bg_id }}" target="_blank" rel="noopener">this game on BGG</a>
+                    {% endif %}
+                </p>
+                {% endif %}
+                <p class="muted">
+                    {% if let Some(min) = game.min_players %}{{ min }}{% if let Some(max) = game.max_players %}–{{ max }}{% endif %} players{% endif %}
+                    {% if let Some(min_pt) = game.min_playtime %} &middot; {{ min_pt }}{% if let Some(max_pt) = game.max_playtime %}–{{ max_pt }}{% endif %} min{% endif %}
+                    {% if let Some(age) = game.min_age %} &middot; ages {{ age }}+{% endif %}
+                    {% if let Some(w) = game.weight %} &middot; weight {{ w }}{% endif %}
+                    {% if let Some(r) = game.average_rating %} &middot; BGG rating {{ r }}{% endif %}
+                </p>
+                {% if let Some(d) = game.designers %}
+                <p class="muted">Designed by {{ d }}</p>
+                {% endif %}
+                {% if let Some(a) = game.artists %}
+                <p class="muted">Art by {{ a }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <h2>Add to my collection</h2>
+        <form method="post" action="/collection/add" style="display:flex;gap:8px;align-items:center;max-width:400px;">
+            <input type="hidden" name="bgg_id" value="{{ game.bgg_id }}">
+            <select name="status" style="margin-bottom:0;">
+            {% for s in statuses %}
+                <option value="{{ s.0 }}">{{ s.1 }}</option>
+            {% endfor %}
+            </select>
+            <button type="submit" class="button">Add</button>
+        </form>
+    </main>
+</body>
+</html>

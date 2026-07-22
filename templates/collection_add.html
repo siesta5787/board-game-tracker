@@ -32,7 +32,7 @@
             <tbody>
             {% for r in results %}
                 <tr>
-                    <td>{{ r.name }}{% if r.is_expansion %} <span class="badge">Expansion</span>{% endif %}</td>
+                    <td><a href="/collection/add/preview/{{ r.bgg_id }}?q={{ query|urlencode }}">{{ r.name }}</a>{% if r.is_expansion %} <span class="badge">Expansion</span>{% endif %}</td>
                     <td>{% if let Some(y) = r.year_published %}{{ y }}{% endif %}</td>
                     <td colspan="2">
                         <form method="post" action="/collection/add" style="display:flex;gap:8px;align-items:center;margin:0;">

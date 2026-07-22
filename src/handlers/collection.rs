@@ -234,6 +234,56 @@ pub async fn add_search_form(
     )
 }
 
+#[derive(Template)]
+#[template(path = "collection_add_preview.html")]
+struct CollectionAddPreviewTemplate {
+    title: String,
+    username: String,
+    query: String,
+    game: GameDetails,
+    statuses: [(&'static str, &'static str); 7],
+}
+
+#[derive(Deserialize)]
+pub struct PreviewQuery {
+    q: Option<String>,
+}
+
+/// Shows the same kind of detail (photo, player counts, weight, rating,
+/// designers/artists) a game gets once it's actually added — reached by
+/// clicking a search result, since BGG's search endpoint itself doesn't
+/// return images or any of this, only name/year. Fetching it lazily like
+/// this (one extra request, only for the specific game someone's actually
+/// considering) avoids firing a full `fetch_game` for every row in a
+/// results list just to show a thumbnail.
+pub async fn preview_from_bgg(
+    State(state): State<AppState>,
+    Extension(CurrentUser(current)): Extension<CurrentUser>,
+    Path(bgg_id): Path<i64>,
+    Query(params): Query<PreviewQuery>,
+) -> impl IntoResponse {
+    let token = settings::get(&state.db, settings::BGG_API_TOKEN).await;
+    match bgg::fetch_game(bgg_id, token.as_deref()).await {
+        Ok(Some(game)) => Html(
+            CollectionAddPreviewTemplate {
+                title: game.name.clone(),
+                username: current.username,
+                query: params.q.unwrap_or_default(),
+                game,
+                statuses: status_options(),
+            }
+            .render()
+            .unwrap(),
+        )
+        .into_response(),
+        _ => (
+            axum::http::StatusCode::BAD_GATEWAY,
+            "Couldn't fetch that game's details from BoardGameGeek. Try again, or add it manually.",
+        )
+            .into_response(),
+    }
+}
+
 fn status_options() -> [(&'static str, &'static str); 7] {
     [
         ("owned", "Owned"),
