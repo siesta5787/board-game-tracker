@@ -59,12 +59,20 @@ fn client() -> reqwest::Client {
         .expect("building a basic reqwest client should never fail")
 }
 
-pub async fn search(query: &str) -> Result<Vec<SearchResult>, String> {
+/// BGG's XML API requires a Bearer token (an app-registration token, one
+/// per self-hosted instance — see `src/settings.rs`). `None` here means no
+/// token has been configured yet; callers should check for that case
+/// themselves and give a more specific message than a generic HTTP error.
+pub async fn search(query: &str, token: Option<&str>) -> Result<Vec<SearchResult>, String> {
     let url = format!(
         "https://boardgamegeek.com/xmlapi2/search?query={}&type=boardgame,boardgameexpansion",
         urlencoding::encode(query)
     );
-    let response = client().get(&url).send().await.map_err(|e| e.to_string())?;
+    let mut request = client().get(&url);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.map_err(|e| e.to_string())?;
     let status = response.status();
     let body = response.text().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
@@ -73,9 +81,13 @@ pub async fn search(query: &str) -> Result<Vec<SearchResult>, String> {
     Ok(parse_search_xml(&body))
 }
 
-pub async fn fetch_game(bgg_id: i64) -> Result<Option<GameDetails>, String> {
+pub async fn fetch_game(bgg_id: i64, token: Option<&str>) -> Result<Option<GameDetails>, String> {
     let url = format!("https://boardgamegeek.com/xmlapi2/thing?id={bgg_id}&stats=1");
-    let response = client().get(&url).send().await.map_err(|e| e.to_string())?;
+    let mut request = client().get(&url);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.map_err(|e| e.to_string())?;
     let status = response.status();
     if !status.is_success() {
         return Err(format!("BGG returned HTTP {status}"));

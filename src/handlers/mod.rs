@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod admin_bgg;
 pub mod admin_console;
 pub mod admin_import;
 pub mod auth;

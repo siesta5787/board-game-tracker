@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% include "partials/head.html" %}
+</head>
+<body>
+{% include "partials/app_header.html" %}
+    <main class="app-content">
+        <h1>BGG integration</h1>
+        <p class="hint">BoardGameGeek's search API requires an app-registration token. This is per-install &mdash; register your own application at <a href="https://boardgamegeek.com/applications" target="_blank" rel="noopener">boardgamegeek.com/applications</a> and paste the token below. It's stored only in this instance's database, never in the app's code, so it's never shared with anyone else self-hosting this app.</p>
+
+        {% if let Some(m) = message %}
+        <div class="success">{{ m }}</div>
+        {% endif %}
+
+        {% if has_token %}
+        <p class="success">A BGG API token is currently configured. BGG search and game lookup are active.</p>
+        {% else %}
+        <p class="hint">No token configured yet &mdash; BGG search/lookup is disabled and games can only be added manually until one is set.</p>
+        {% endif %}
+
+        <form method="post" action="/admin/bgg" style="max-width:500px;">
+            <label for="token">BGG API token</label>
+            <input type="password" id="token" name="token" placeholder="Paste your token" autocomplete="off" required>
+            <p class="hint">Not shown again after saving &mdash; paste a new one here any time to replace it.</p>
+            <button type="submit" class="button">Save</button>
+        </form>
+
+        {% if has_token %}
+        <form method="post" action="/admin/bgg/remove" onsubmit="return confirm('Remove the BGG API token? Search and lookup will stop working until a new one is set.');" style="margin-top:8px;">
+            <button type="submit" class="button-danger">Remove token</button>
+        </form>
+        {% endif %}
+    </main>
+</body>
+</html>

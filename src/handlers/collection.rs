@@ -7,6 +7,7 @@ use serde::Deserialize;
 use crate::AppState;
 use crate::bgg::{self, GameDetails, SearchResult};
 use crate::security::{self, CurrentUser};
+use crate::settings;
 
 const STATUSES: [&str; 7] = [
     "owned",
@@ -185,14 +186,25 @@ struct CollectionAddTemplate {
 }
 
 pub async fn add_search_form(
+    State(state): State<AppState>,
     Extension(CurrentUser(current)): Extension<CurrentUser>,
     Query(params): Query<SearchQuery>,
 ) -> impl IntoResponse {
     let query = params.q.unwrap_or_default();
+    let token = settings::get(&state.db, settings::BGG_API_TOKEN).await;
     let (results, error) = if query.trim().is_empty() {
         (Vec::new(), None)
+    } else if token.is_none() {
+        (
+            Vec::new(),
+            Some(
+                "BoardGameGeek search isn't set up on this instance yet — an admin needs to add \
+                 an API token under Admin console > BGG. You can add this game manually instead."
+                    .to_string(),
+            ),
+        )
     } else {
-        match bgg::search(query.trim()).await {
+        match bgg::search(query.trim(), token.as_deref()).await {
             Ok(r) if r.is_empty() => (
                 Vec::new(),
                 Some("No games found on BoardGameGeek for that search.".to_string()),
@@ -249,7 +261,8 @@ pub async fn add_from_bgg(
         return (axum::http::StatusCode::BAD_REQUEST, "Invalid status").into_response();
     }
 
-    let details = match bgg::fetch_game(form.bgg_id).await {
+    let token = settings::get(&state.db, settings::BGG_API_TOKEN).await;
+    let details = match bgg::fetch_game(form.bgg_id, token.as_deref()).await {
         Ok(Some(d)) => d,
         _ => {
             return (

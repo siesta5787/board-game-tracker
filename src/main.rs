@@ -5,6 +5,7 @@ mod handlers;
 mod models;
 mod plays;
 mod security;
+mod settings;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
@@ -138,6 +139,11 @@ async fn main() {
 
     let admin_routes = Router::new()
         .route("/admin/console", get(handlers::admin_console::show_console))
+        .route(
+            "/admin/bgg",
+            get(handlers::admin_bgg::show_settings).post(handlers::admin_bgg::save_token),
+        )
+        .route("/admin/bgg/remove", post(handlers::admin_bgg::remove_token))
         .route("/admin/users", get(handlers::admin::list_users))
         .route(
             "/admin/users/new",
